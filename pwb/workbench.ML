@@ -1,3 +1,4 @@
-(* uses pwb/stringname,
+(* uses pwb/missing,
+        pwb/stringname,
         pwb/command
 *)
