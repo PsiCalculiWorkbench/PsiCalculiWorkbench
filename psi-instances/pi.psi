@@ -1,0 +1,9 @@
+
+X(x) <= !(x(w). (new "result to pass")'w<"result to pass">)
+
+-- [| (\x.x)N |]u
+ID(u) <= (new v)(v(x).v(w).'x<w> 
+                | (new x)'v<x>.'v<u>. X<x> (* [|x := N|] *) )
+
+-- simulation result should be ~ to X<x>
+-- that is [| N |]u

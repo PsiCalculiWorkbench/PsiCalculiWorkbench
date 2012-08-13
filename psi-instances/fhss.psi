@@ -1,0 +1,30 @@
+--
+-- Frequency hopping spread spectrum
+--
+
+FHSS(fh, in, out) <=
+  ! fh(freq) . (
+    case
+         T : out(y)  . 'freq<y> . 'fh< "nextFreq(freq)" >
+      [] T : freq(y) . 'in<y>   . 'fh< "nextFreq(freq)" >
+    ) ;
+
+
+I(ctl, fh, in, out, sync) <=
+    'ctl<sync>.ctl(seed).('fh<seed>.'out<sync>. 0
+                          | FHSS<fh, in, out> ) ;
+
+R(ctl, fh, in, out) <=
+    ctl(s).(new seed)'ctl<seed>.('fh<seed>.in(x). 0
+                                | FHSS<fh, in, out> );
+
+(*
+ * Main
+ *)
+FH(ctl, sync) <=
+    (new fh, in, out)
+        case
+            T : I<ctl, fh, in, out, sync>
+        []  T : R<ctl, fh, in, out> ;
+
+

@@ -1,0 +1,7 @@
+--
+-- Common Ether
+--
+
+-- Communicated even though a and b are private
+-- sstep ((new a)((| a |) | a(x)))   |    ((new b)((| b |) | 'b<b>));
+

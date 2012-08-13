@@ -1,0 +1,94 @@
+#!/bin/bash
+
+#
+# The command frontend for various Psi workbench tools.
+#
+
+
+if [ -z "$PSI_WORKBENCH_HOME" ]; then
+    PSI_WORKBENCH_HOME=$(cd `dirname "$0"` && cd .. && pwd)
+fi
+
+# determine the sml interpreter to use
+[ -z "$SMLBIN" ] && SML='poly' || SML="$SMLBIN"
+
+which "$SML" > /dev/null || {
+    echo "The SML interpreter '$SML' was not found!"
+    exit 1
+}
+
+
+function commandlist {
+        cat <<END
+Usage: $0 <command> <command options ...>
+
+Command list:
+
+    sml           - an sml implementation wrapper which uses the Uses module system.
+    instance-stub - creates a stub file for an instance implementation.
+    load-instance - loads an instance.
+    help          - print this help message and exit.
+    full-list     - additionaly to this help message, prints full list of commands.
+
+See '$0 <command> -h' for details.
+END
+}
+
+function othercommandlist {
+    commandlist
+    cat <<END
+
+Additional commands:
+
+    sig-rel      - produces a signature relationship diagram from given SML files.
+END
+}
+
+
+COMMAND=$1
+shift
+
+export TOOLSPATH="$PSI_WORKBENCH_HOME/tools"
+export PSI_WORKBENCH_HOME
+export SML
+
+case "$COMMAND" in
+    sml) 
+        export COMMANDEXEC="$0 sml"
+        exec "$TOOLSPATH"/sml.sh "$@"
+        ;;
+    instance-stub)
+        export COMMANDEXEC="$0 instance-stub"
+        exec "$TOOLSPATH"/template.pl "$@"
+        ;;
+    load-instance)
+        export COMMANDEXEC="$0 load-instance"
+        exec "$TOOLSPATH"/load-instance.sh "$@"
+        ;;
+    help | --help | -h)
+        commandlist;
+        exit
+        ;;
+    full-list)
+        commandlist;
+        othercommandlist;
+        exit;
+        ;;
+    sig-rel)
+        export COMMANDEXEC="$0 sig-rel"
+        exec "$TOOLSPATH"/signatures.sh "$@"
+        ;;
+    compile)
+        export COMMANDEXEC="$0 compile"
+        exec "$TOOLSPATH"/compile.sh "$@"
+        ;;
+    "")
+        echo "Note: no command was given, see '$0 help' for a list of commands."
+        ;;
+    *)
+        echo -n "Note: the command '$COMMAND' is unknown,"
+        echo    " see '$0 help' for a list of supported commands."
+        ;;
+esac
+
+
