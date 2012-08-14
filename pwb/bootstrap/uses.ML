@@ -5,7 +5,7 @@ sig
 
   val uses : string -> unit
   val usesFile : string -> unit
-  val collectFileListFromModStrFiles : string -> string list
+  val collectFileListFromModStrFiles : string -> (string * string) list
 
   (*val canonicalName : string -> string*)
   (*val isLoaded : string -> bool*)
@@ -218,7 +218,7 @@ struct
                       val () = log ("Visiting file " ^ p ^ " with canonical name " ^ c)
                       val vis = (modStr, p, c)::visited
                       val () = forall (fn ms => loadFile ms vis) modStrs
-                      val () = loaded := (!loaded) @ [p]
+                      val () = loaded := (!loaded) @ [(modStr,p)]
                       val _ = markAsLoadedFile p
                     in () end
              end))
@@ -237,7 +237,9 @@ struct
   let
     val files = collectFileListFromModStrFiles modStr
   in
-    forall (fn f => (log1 ("Loading file: " ^ f); use f)) files
+    forall (fn (m,f) =>
+        (log1 ("Loading module \"" ^ m ^ "\" resolved as the file \"" ^ f ^ "\"");
+         use f)) files
   end
 
 

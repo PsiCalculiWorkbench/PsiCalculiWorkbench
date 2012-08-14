@@ -1,6 +1,4 @@
 
-PwbSml.supressOutput ();
-
 val pwbUsesRequiredFiles =
   [
   "pwb/missing.ML",

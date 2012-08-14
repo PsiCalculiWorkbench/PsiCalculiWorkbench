@@ -34,6 +34,6 @@ if pwbIsPolyML ()
 
 
 PwbSml.supressOutput ();
+
 pwbPlatformisedUse "pwb/bootstrap/bootstrap-uses.ML";
-PwbSml.restoreOutput ();
 
