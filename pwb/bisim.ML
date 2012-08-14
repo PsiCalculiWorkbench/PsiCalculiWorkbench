@@ -1,7 +1,7 @@
 (* uses pwb/missing,
         pwb/psi,
         pwb/simulator,
-        pwb/weak
+        pwb/weak-simulator
 *)
 
 signature SYMBOLIC_BISIM_CONSTRAINT =

@@ -1,6 +1,6 @@
 (* uses pwb/missing,
         pwb/parser,
-        pwb/psi-parsing,
+        pwb/psi-parser,
         pwb/pp,
         pwb/psi *)
 

@@ -2,7 +2,7 @@
         pwb/parser,
         pwb/pp,
         pwb/psi,
-        pwb/psi-parsing,
+        pwb/psi-parser,
         pwb/pp-nom,
         pwb/pp-psi,
         pwb/pp-sim,

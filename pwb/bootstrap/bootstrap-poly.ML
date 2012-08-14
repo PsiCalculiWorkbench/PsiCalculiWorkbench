@@ -6,5 +6,6 @@ struct
 
   fun supressOutput () = PolyML.print_depth 0
   fun restoreOutput () = PolyML.print_depth (!dpth)
+  fun setOutput i = dpth := i
 
 end;

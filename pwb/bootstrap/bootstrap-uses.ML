@@ -5,7 +5,7 @@ val pwbUsesRequiredFiles =
   [
   "pwb/missing.ML",
   "pwb/missing-io.ML",
-  "pwb/pwb-logging.ML",
+  "pwb/pwb-logger.ML",
   "pwb/parser.ML",
   "pwb/contrib/md5-sig.ML",
   "pwb/contrib/md5.ML",

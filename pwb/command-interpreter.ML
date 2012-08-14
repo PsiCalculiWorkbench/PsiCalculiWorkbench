@@ -1,7 +1,7 @@
 (* uses pwb/missing,
         pwb/parser,
         pwb/pp,
-        pwb/psi-parsing,
+        pwb/psi-parser,
         pwb/missing-io
 *)
 
