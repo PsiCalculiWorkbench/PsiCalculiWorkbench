@@ -40,6 +40,13 @@ sig
   val substT     : (name * term) list -> term      -> term
   val substC     : (name * term) list -> condition -> condition
   val substA     : (name * term) list -> assertion -> assertion
+
+
+  (*val isWellFormedOutSubj : term -> (string, string) Either.either*)
+  (*val isWellFormedInSubj  : term -> (string, string) Either.either*)
+  (*val isWellFormedOutObj  : term -> (string, string) Either.either*)
+  (*val isWellFormedCond    : cond -> (string, string) Either.either*)
+  (*val isWellFormedAssr    : assr -> (string, string) Either.either*)
 end;
 
 
@@ -75,6 +82,11 @@ sig
 
   (* Substitution function *)
   val subst : psi -> (Inst.name * Inst.term) list -> psi
+
+  val isWellformed : psi -> (string * psi, string) Either.either
+  val isSubstSeqWellformed : (Inst.name * Inst.term) list ->
+                ((string * (Inst.name * Inst.term)) list,
+                  string) Either.either
 end;
 
 
@@ -441,13 +453,30 @@ struct
                Input (substT s m, xvec, substT s n, subst' s p)
                | _ => Err.undefined ())
         end
-    | subst' s (BrInput args) = 
+    | subst' s (BrInput args) =
       subst' s (Input args) |> (fn (Input args') => BrInput args'
 				 | _             => Err.undefined ())
     | subst' s (Invocation (k, mvec)) =
         Invocation (k, map (substT s) mvec)
 
   fun subst agent sigma = subst' sigma agent
+
+
+  (* TODO: *)
+  fun isWellformed _ = Err.undefined ()
+
+  fun isSubstSeqWellformed' [] err = err
+    | isSubstSeqWellformed' ((a,m)::sigma) err =
+    if Inst.canSubs (Inst.Term.atomSort a) (Inst.Term.dataSort m)
+        then isSubstSeqWellformed' sigma err
+        else isSubstSeqWellformed' sigma
+                (("cannot be substituted", (a,m))::err)
+
+  fun isSubstSeqWellformed sigma =
+    case isSubstSeqWellformed' sigma [] of
+         [] => Either.RIGHT "OK"
+       | e  => Either.LEFT e
+
 
 end;
 
