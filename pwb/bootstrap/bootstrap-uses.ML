@@ -1,17 +1,7 @@
 
-(*PolyML.print_depth 0;*)
-
-
-val pwbHomeEnv = OS.Process.getEnv "PSI_WORKBENCH_HOME";
-
-case pwbHomeEnv of
-     NONE => raise (Fail "The environment variable PSI_WORKBENCH_HOME is not set!")
-   | SOME _ => ();
-
-val SOME pwbHome = pwbHomeEnv;
+PwbSml.supressOutput ();
 
 val pwbUsesRequiredFiles =
-  map (String.fields (fn c => c = #"/"))
   [
   "pwb/missing.ML",
   "pwb/missing-io.ML",
@@ -21,15 +11,6 @@ val pwbUsesRequiredFiles =
   "pwb/contrib/md5.ML",
   "pwb/bootstrap/uses.ML"
   ];
-
-
-fun pwbPlatformiseFiles files =
-let
-  val {arcs,isAbs,vol} = OS.Path.fromString pwbHome
-in
-  map (fn farcs =>
-    OS.Path.toString {arcs=arcs@farcs, isAbs=isAbs, vol=vol}) files
-end;
 
 
 val pwbUsesRequiredFiles = pwbPlatformiseFiles pwbUsesRequiredFiles;
@@ -46,5 +27,5 @@ val () = List.app Uses.markAsLoadedFile pwbUsesRequiredFiles;
 val uses = Uses.uses;
 
 
-(*PolyML.print_depth 100;*)
+PwbSml.restoreOutput ();
 

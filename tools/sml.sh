@@ -31,7 +31,7 @@ done
 #$SML_QUITE_OUTPUT
 
 (
-echo -n "use \"$PSI_WORKBENCH_HOME/pwb/bootstrap/bootstrap-uses.ML\";"
+echo -n "use \"$PSI_WORKBENCH_HOME/pwb/bootstrap/bootstrap.ML\";"
 for f in "$@"; do echo -ne "uses \"$f\";"; done;
 echo
 if [ ! -z "$OUT" ]; then
