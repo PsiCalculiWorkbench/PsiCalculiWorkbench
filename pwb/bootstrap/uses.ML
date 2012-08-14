@@ -30,6 +30,7 @@ struct
 
 
   val log = PwbLog.write "Pwb Uses"
+  val log1 = PwbLog.write "Pwb Uses 1"
 
 
   type loaded_files = (string * string) list
@@ -236,7 +237,7 @@ struct
   let
     val files = collectFileListFromModStrFiles modStr
   in
-    forall (fn f => (log ("Loading file: " ^ f); use f)) files
+    forall (fn f => (log1 ("Loading file: " ^ f); use f)) files
   end
 
 

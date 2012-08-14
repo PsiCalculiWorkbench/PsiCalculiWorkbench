@@ -26,6 +26,5 @@ val () = List.app Uses.markAsLoadedFile pwbUsesRequiredFiles;
 
 val uses = Uses.uses;
 
-
-PwbSml.restoreOutput ();
+PwbLog.pushLoggerStdErr "Pwb Uses 1";
 

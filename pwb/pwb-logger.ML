@@ -10,6 +10,7 @@ sig
   val popLogger  : string -> (string -> unit) option
 
   val pushLoggerStdOut : string -> unit
+  val pushLoggerStdErr : string -> unit
 end;
 
 
@@ -126,9 +127,13 @@ struct
        | SOME [] => ()
        | SOME (l::logs) => l msg
 
+  fun compileOutMsg log msg = log ^ ": " ^ msg ^ "\n"
 
-  fun pushLoggerStdOut log = pushLogger log (fn x => (print x; print "\n"))
+  fun pushLoggerStd log strm =
+    pushLogger log (fn x => TextIO.output (strm, compileOutMsg log x))
+
+  fun pushLoggerStdOut log = pushLoggerStd log TextIO.stdOut
+  fun pushLoggerStdErr log = pushLoggerStd log TextIO.stdErr
+
 end;
-
-
 
