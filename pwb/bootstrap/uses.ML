@@ -21,8 +21,8 @@ sig
 end =
 struct
   structure Parser = Parser(ParserStreamIO)
-  open Parser
   open Missing
+  open Parser
   structure Path = OS.Path
   structure FileSys = OS.FileSys
 

@@ -61,6 +61,10 @@ sig
   val filterSome : 'a option list -> 'a list
   val maybe      : 'b -> ('a -> 'b) -> 'a option -> 'b
   val always     : ('a -> 'b) -> 'a option -> 'b
+
+  val bindO : 'a option -> ('a -> 'b option) -> 'b option
+  val returnO : 'a -> 'a option
+  val errorO : 'a -> 'b option
 end = struct
   fun some f (SOME x) = SOME (f x)
     | some f     NONE = NONE
@@ -74,6 +78,14 @@ end = struct
   fun filterSome lst =
     map (fn (SOME x) => x | _ => raise Match) $
         List.filter (maybe false $ const true) lst
+
+  fun bindO v f =
+    case v of
+         NONE => NONE
+       | SOME x => f x
+
+  fun returnO v = SOME v
+  fun errorO x = NONE
 
 end;
 
@@ -206,6 +218,11 @@ sig
 
   val right : ('a,'b) either -> 'b
   val left : ('a,'b) either -> 'a
+
+  (* Monad operations *)
+  val bindE   : ('a,'b) either -> ('b -> ('a,'d) either) -> ('a,'d) either
+  val returnE : 'b -> ('a, 'b) either
+  val errorE  : 'a -> ('a, 'b) either
 end
 =
 struct
@@ -229,6 +246,16 @@ struct
         List.filter (fn (LEFT _) => true | _ => false) e
 
   fun partition e = (lefts e, rights e)
+
+  fun bindE v f =
+    case v of
+         LEFT x => LEFT x
+       | RIGHT y => f y
+
+  fun returnE v = RIGHT v
+
+  fun errorE e = LEFT e
+
 end;
 
 

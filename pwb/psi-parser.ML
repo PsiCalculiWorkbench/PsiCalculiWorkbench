@@ -37,8 +37,8 @@ sig
   val stok          : string -> unit P.parser
 end =
 struct
-  open P;
-  open Missing;
+  open Missing
+  open P
 
 
   val sp = sat Char.isSpace
@@ -125,10 +125,10 @@ struct
   structure B      = PsiLexerParserComb(Parser)
   open B
 local
+  open Missing
   open A.Req
   open Parser
   open Psi
-  open Missing
 in
 
 

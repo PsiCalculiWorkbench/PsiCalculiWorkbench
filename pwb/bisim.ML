@@ -412,7 +412,7 @@ struct
   fun translateC nl (TC.Conjunction l)     = translateL nl l
     | translateC nl (TC.Atomic(psi,phi))   = Atomic(nl,psi,phi)
     | translateC nl (TC.Restriction(nl',c)) = translateC (nl'@nl) c
-    | translateC _ _ = error "Existential quantifiers in Bisimulation TBD"
+    | translateC _ _ = Err.error "Existential quantifiers in Bisimulation TBD"
   and translateL nl [] = True
     | translateL nl l  = Lst.reduce Conj $ List.map (translateC nl) l
 
