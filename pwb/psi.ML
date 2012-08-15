@@ -42,11 +42,12 @@ sig
   val substA     : (name * term) list -> assertion -> assertion
 
 
-  (*val isWellFormedOutSubj : term -> (string, string) Either.either*)
-  (*val isWellFormedInSubj  : term -> (string, string) Either.either*)
-  (*val isWellFormedOutObj  : term -> (string, string) Either.either*)
-  (*val isWellFormedCond    : cond -> (string, string) Either.either*)
-  (*val isWellFormedAssr    : assr -> (string, string) Either.either*)
+  val isWellFormedOutSubj : term -> (string, string) Either.either
+  val isWellFormedInSubj  : term -> (string, string) Either.either
+  val isWellFormedInvArg  : term -> (string, string) Either.either
+  val isWellFormedOutObj  : term -> (string, string) Either.either
+  val isWellFormedCond    : condition -> (string, string) Either.either
+  val isWellFormedAssr    : assertion -> (string, string) Either.either
 end;
 
 
@@ -462,8 +463,33 @@ struct
   fun subst agent sigma = subst' sigma agent
 
 
-  (* TODO: *)
-  fun isWellformed _ = Err.undefined ()
+  local open Either open Tpl open Inst in
+  fun e >>= f = bindE e f
+  fun e >> e' = e >>= (fn _ => e')
+  fun lf p e = either (LEFT o swap o tuple p) RIGHT e
+  fun bindAll es = foldr (op>>) (returnE "OK") es
+
+  fun isWellformed Nil = returnE "OK"
+    | isWellformed (p as (Output (m,n,p'))) =
+        (lf p $ isWellFormedOutSubj m >>
+                isWellFormedOutObj n) >> isWellformed p'
+    | isWellformed (p as (Input (m, _, _, p'))) =
+        (lf p $ isWellFormedInSubj m) >> isWellformed p'
+    | isWellformed (p as (Case cnds)) =
+        (lf p (bindAll (map (isWellFormedCond o fst) cnds))) >>
+         bindAll (map (isWellformed o snd) cnds)
+    | isWellformed (Restriction (_,p)) = isWellformed p
+    | isWellformed (Parallel (p,q)) = isWellformed p >> isWellformed q
+    | isWellformed (Replication p) = isWellformed p
+    | isWellformed (p as (Assertion psi)) =
+        lf p $ isWellFormedAssr psi
+    | isWellformed (p as (Invocation (_,ms))) =
+        lf p $ bindAll (map isWellFormedInvArg ms)
+
+        (* TODO *)
+    | isWellformed (BrInput _) = Err.undefined ()
+    | isWellformed (BrOutput _) = Err.undefined ()
+  end
 
   fun isSubstSeqWellformed' [] err = err
     | isSubstSeqWellformed' ((a,m)::sigma) err =
