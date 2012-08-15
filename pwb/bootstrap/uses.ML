@@ -29,8 +29,8 @@ struct
   exception UsesError of string
 
 
-  val log = PwbLog.write "Pwb Uses"
-  val log1 = PwbLog.write "Pwb Uses 1"
+  val log = PwbLog.write "Pwb Uses Debug"
+  val log1 = PwbLog.write "Pwb Uses"
 
 
   type loaded_files = (string * string) list
