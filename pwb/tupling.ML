@@ -6,6 +6,8 @@ fun get1of2 (x1,x2) = x1
 fun get2of2 (x1,x2) = x2
 fun set1of2 (x1,x2) yy = (yy,x2)
 fun set2of2 (x1,x2) yy = (x1,yy)
+fun upd1of2 t f = set1of2 t (f (get1of2 t))
+fun upd2of2 t f = set2of2 t (f (get2of2 t))
 
 
 (* Tuples of 3 *)
@@ -15,6 +17,9 @@ fun get3of3 (x1,x2,x3) = x3
 fun set1of3 (x1,x2,x3) yy = (yy,x2,x3)
 fun set2of3 (x1,x2,x3) yy = (x1,yy,x3)
 fun set3of3 (x1,x2,x3) yy = (x1,x2,yy)
+fun upd1of3 t f = set1of3 t (f (get1of3 t))
+fun upd2of3 t f = set2of3 t (f (get2of3 t))
+fun upd3of3 t f = set3of3 t (f (get3of3 t))
 
 
 (* Tuples of 4 *)
@@ -26,6 +31,10 @@ fun set1of4 (x1,x2,x3,x4) yy = (yy,x2,x3,x4)
 fun set2of4 (x1,x2,x3,x4) yy = (x1,yy,x3,x4)
 fun set3of4 (x1,x2,x3,x4) yy = (x1,x2,yy,x4)
 fun set4of4 (x1,x2,x3,x4) yy = (x1,x2,x3,yy)
+fun upd1of4 t f = set1of4 t (f (get1of4 t))
+fun upd2of4 t f = set2of4 t (f (get2of4 t))
+fun upd3of4 t f = set3of4 t (f (get3of4 t))
+fun upd4of4 t f = set4of4 t (f (get4of4 t))
 
 
 (* Tuples of 5 *)
@@ -39,6 +48,11 @@ fun set2of5 (x1,x2,x3,x4,x5) yy = (x1,yy,x3,x4,x5)
 fun set3of5 (x1,x2,x3,x4,x5) yy = (x1,x2,yy,x4,x5)
 fun set4of5 (x1,x2,x3,x4,x5) yy = (x1,x2,x3,yy,x5)
 fun set5of5 (x1,x2,x3,x4,x5) yy = (x1,x2,x3,x4,yy)
+fun upd1of5 t f = set1of5 t (f (get1of5 t))
+fun upd2of5 t f = set2of5 t (f (get2of5 t))
+fun upd3of5 t f = set3of5 t (f (get3of5 t))
+fun upd4of5 t f = set4of5 t (f (get4of5 t))
+fun upd5of5 t f = set5of5 t (f (get5of5 t))
 
 
 (* Tuples of 6 *)
@@ -54,6 +68,12 @@ fun set3of6 (x1,x2,x3,x4,x5,x6) yy = (x1,x2,yy,x4,x5,x6)
 fun set4of6 (x1,x2,x3,x4,x5,x6) yy = (x1,x2,x3,yy,x5,x6)
 fun set5of6 (x1,x2,x3,x4,x5,x6) yy = (x1,x2,x3,x4,yy,x6)
 fun set6of6 (x1,x2,x3,x4,x5,x6) yy = (x1,x2,x3,x4,x5,yy)
+fun upd1of6 t f = set1of6 t (f (get1of6 t))
+fun upd2of6 t f = set2of6 t (f (get2of6 t))
+fun upd3of6 t f = set3of6 t (f (get3of6 t))
+fun upd4of6 t f = set4of6 t (f (get4of6 t))
+fun upd5of6 t f = set5of6 t (f (get5of6 t))
+fun upd6of6 t f = set6of6 t (f (get6of6 t))
 
 
 (* Tuples of 7 *)
@@ -71,6 +91,13 @@ fun set4of7 (x1,x2,x3,x4,x5,x6,x7) yy = (x1,x2,x3,yy,x5,x6,x7)
 fun set5of7 (x1,x2,x3,x4,x5,x6,x7) yy = (x1,x2,x3,x4,yy,x6,x7)
 fun set6of7 (x1,x2,x3,x4,x5,x6,x7) yy = (x1,x2,x3,x4,x5,yy,x7)
 fun set7of7 (x1,x2,x3,x4,x5,x6,x7) yy = (x1,x2,x3,x4,x5,x6,yy)
+fun upd1of7 t f = set1of7 t (f (get1of7 t))
+fun upd2of7 t f = set2of7 t (f (get2of7 t))
+fun upd3of7 t f = set3of7 t (f (get3of7 t))
+fun upd4of7 t f = set4of7 t (f (get4of7 t))
+fun upd5of7 t f = set5of7 t (f (get5of7 t))
+fun upd6of7 t f = set6of7 t (f (get6of7 t))
+fun upd7of7 t f = set7of7 t (f (get7of7 t))
 
 
 (* Tuples of 8 *)
@@ -90,6 +117,14 @@ fun set5of8 (x1,x2,x3,x4,x5,x6,x7,x8) yy = (x1,x2,x3,x4,yy,x6,x7,x8)
 fun set6of8 (x1,x2,x3,x4,x5,x6,x7,x8) yy = (x1,x2,x3,x4,x5,yy,x7,x8)
 fun set7of8 (x1,x2,x3,x4,x5,x6,x7,x8) yy = (x1,x2,x3,x4,x5,x6,yy,x8)
 fun set8of8 (x1,x2,x3,x4,x5,x6,x7,x8) yy = (x1,x2,x3,x4,x5,x6,x7,yy)
+fun upd1of8 t f = set1of8 t (f (get1of8 t))
+fun upd2of8 t f = set2of8 t (f (get2of8 t))
+fun upd3of8 t f = set3of8 t (f (get3of8 t))
+fun upd4of8 t f = set4of8 t (f (get4of8 t))
+fun upd5of8 t f = set5of8 t (f (get5of8 t))
+fun upd6of8 t f = set6of8 t (f (get6of8 t))
+fun upd7of8 t f = set7of8 t (f (get7of8 t))
+fun upd8of8 t f = set8of8 t (f (get8of8 t))
 
 
 (* Tuples of 9 *)
@@ -111,6 +146,15 @@ fun set6of9 (x1,x2,x3,x4,x5,x6,x7,x8,x9) yy = (x1,x2,x3,x4,x5,yy,x7,x8,x9)
 fun set7of9 (x1,x2,x3,x4,x5,x6,x7,x8,x9) yy = (x1,x2,x3,x4,x5,x6,yy,x8,x9)
 fun set8of9 (x1,x2,x3,x4,x5,x6,x7,x8,x9) yy = (x1,x2,x3,x4,x5,x6,x7,yy,x9)
 fun set9of9 (x1,x2,x3,x4,x5,x6,x7,x8,x9) yy = (x1,x2,x3,x4,x5,x6,x7,x8,yy)
+fun upd1of9 t f = set1of9 t (f (get1of9 t))
+fun upd2of9 t f = set2of9 t (f (get2of9 t))
+fun upd3of9 t f = set3of9 t (f (get3of9 t))
+fun upd4of9 t f = set4of9 t (f (get4of9 t))
+fun upd5of9 t f = set5of9 t (f (get5of9 t))
+fun upd6of9 t f = set6of9 t (f (get6of9 t))
+fun upd7of9 t f = set7of9 t (f (get7of9 t))
+fun upd8of9 t f = set8of9 t (f (get8of9 t))
+fun upd9of9 t f = set9of9 t (f (get9of9 t))
 
 
 (* Tuples of 10 *)
@@ -134,6 +178,16 @@ fun set7of10 (x1,x2,x3,x4,x5,x6,x7,x8,x9,x10) yy = (x1,x2,x3,x4,x5,x6,yy,x8,x9,x
 fun set8of10 (x1,x2,x3,x4,x5,x6,x7,x8,x9,x10) yy = (x1,x2,x3,x4,x5,x6,x7,yy,x9,x10)
 fun set9of10 (x1,x2,x3,x4,x5,x6,x7,x8,x9,x10) yy = (x1,x2,x3,x4,x5,x6,x7,x8,yy,x10)
 fun set10of10 (x1,x2,x3,x4,x5,x6,x7,x8,x9,x10) yy = (x1,x2,x3,x4,x5,x6,x7,x8,x9,yy)
+fun upd1of10 t f = set1of10 t (f (get1of10 t))
+fun upd2of10 t f = set2of10 t (f (get2of10 t))
+fun upd3of10 t f = set3of10 t (f (get3of10 t))
+fun upd4of10 t f = set4of10 t (f (get4of10 t))
+fun upd5of10 t f = set5of10 t (f (get5of10 t))
+fun upd6of10 t f = set6of10 t (f (get6of10 t))
+fun upd7of10 t f = set7of10 t (f (get7of10 t))
+fun upd8of10 t f = set8of10 t (f (get8of10 t))
+fun upd9of10 t f = set9of10 t (f (get9of10 t))
+fun upd10of10 t f = set10of10 t (f (get10of10 t))
 
 
 end;

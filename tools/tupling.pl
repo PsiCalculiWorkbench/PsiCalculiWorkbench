@@ -19,13 +19,17 @@ sub gen_for {
         print "fun get${nr}of${n} ($formals) = x${nr}\n";
     }
 
-    # gen mutators
+    # gen setters
     my $var_name = "yy";
     for my $nr (1..$n) {
         my @members = @args;
         $members[$nr - 1] = $var_name;
         my $tuple = join ",", @members;
         print "fun set${nr}of${n} ($formals) ${var_name} = ($tuple)\n";
+    }
+
+    for my $nr (1..$n) {
+        print "fun upd${nr}of${n} t f = set${nr}of${n} t (f (get${nr}of${n} t))\n";
     }
 }
 

@@ -1,65 +1,96 @@
 (* uses pwb/missing,
-        pwb/parser,
-        pwb/pp,
-        pwb/psi-parser,
-        pwb/missing-io
+        pwb/missing-io,
+        pwb/tupling,
+        pwb/data/maps
 *)
+
 
 signature COMMAND_INTERPRETER =
 sig
-  type interpreter
-  type state
-  type command
   type inputstream
 
+  val isReady : inputstream -> bool
+  val isEnd   : inputstream -> bool
+  val read    : inputstream -> char * inputstream
+  val peek    : inputstream -> char
+
+  type interpreter
+  type state
+
+  (* Given current interpreter state and an input,
+     output an action to be carried out if the command was
+     read correctly *)
+  type command =
+    interpreter -> inputstream -> (unit -> interpreter)
+
   val make              : unit -> interpreter
-  val addCommands       : interpreter -> command list -> interpreter
+  val addCommand        : interpreter -> string -> command -> interpreter
   val getState          : interpreter -> state
   val setState          : interpreter -> state -> interpreter
   val setPrompt         : interpreter -> string -> interpreter
   val readCommands      : interpreter -> inputstream -> interpreter
   val readEvalPrintLoop : interpreter -> inputstream ->
                                 interpreter * inputstream
+  val flagExit          : interpreter -> interpreter
+  val output            : interpreter -> string -> interpreter
 end;
 
 
 functor ParsedCommandInterpreter(A:
   sig
-    structure CommandParser : PARSER
+    type inputstream
+
+    val isReady : inputstream -> bool
+    val isEnd   : inputstream -> bool
+    val read    : inputstream -> char * inputstream
+    val peek    : inputstream -> char
+
     type state
-    val make : unit -> state
+    val makeState : unit -> state
   end) : COMMAND_INTERPRETER =
 struct
-  open A
-  open Missing
-  structure Lexer = PsiLexerParserComb(CommandParser)
-  structure Stream = CommandParser.Stream
-  open CommandParser
-  open Lexer
+  open Tupling open Missing open A
 
-  type state = state
-  type inputstream = Stream.stream
+  structure T = CharListTrie
 
-  datatype command' =
-    Command of (interpreter -> (bool * interpreter) CommandParser.parser)
-  and interpreter = Interpreter of (command' list * state * string)
-
-  type command = interpreter -> (bool * interpreter) CommandParser.parser
+  datatype interpreter = Int of
+     ( (interpreter -> inputstream ->
+                    (unit -> interpreter)) T.map
+                        (* 1, the command list *)
+     * state            (* 2, the state *)
+     * string           (* 3, the prompt *)
+     * bool             (* 4, the flag for exiting the interpreter *)
+     )
 
 
-  fun make () = Interpreter ([], A.make (), "")
-  fun getState (Interpreter (_,state,_)) = state
-  fun setState (Interpreter (cmnds, _, p)) state =
-    Interpreter (cmnds, state, p)
-  fun setPrompt (Interpreter (cmnds, state, prompt)) prompt' =
-    Interpreter (cmnds, state, prompt')
-  fun addCommand (Interpreter (cmnds, state, prompt)) cmd =
-    Interpreter ((Command cmd)::cmnds, state, prompt)
-  fun addCommands interp cmnds =
-    List.foldr (uncurry (flip addCommand)) interp cmnds
+  fun getState (Int i)       = get2of4 i
+  fun setState (Int i) state = Int (set2of4 i state)
+  fun setPrompt (Int i) str  = Int (set3of4 i str)
+  fun make ()                = Int (T.empty,makeState(),"",false)
 
-  fun out s = print s
-  fun printPrompt (Interpreter (_,_,prompt)) = out prompt
+
+  type command =
+    interpreter -> inputstream -> (unit -> interpreter)
+
+  fun addCommand (Int i) name cmd =
+    Int $ upd1of4 i (fn cmds =>
+        T.add cmds (String.explode name) cmd)
+
+  fun flagExit (Int i) = Int $ set4of4 i true
+
+  fun output _ _ = Err.undefined ()
+
+  fun printPrompt (Int i) = output (Int i) (get3of4 i)
+
+  fun discard s =
+    if isReady s andalso not (isEnd s)
+        then (discard o snd o read) s
+        else s
+
+  fun readEvalPrintLoop _ _ = Err.undefined ()
+  fun readCommands _ _ = Err.undefined ()
+
+  (*
 
   fun cmndTerm r = stok ";" >> return r
   fun vacious interp = ws >> eof (true, interp)
@@ -81,10 +112,6 @@ struct
     out "\n"
   )
 
-  fun discard s =
-    if Stream.isReady s andalso not (Stream.isEnd s)
-        then (discard o snd o always id o Stream.head) s
-        else s
 
   fun readEvalPrintLoop (interp as (Interpreter (cmnds, state, prompt)))
                         stream =
@@ -125,13 +152,14 @@ struct
        | RIGHT ((interp,s)::_) => interp
        | _ => Err.error "Undefined case in readCommands"
   end
+  *)
 
 end;
 
 
-(*
-  (* Some example/test code *)
+  (*[> Some example/test code <]*)
 
+  (*
 structure TestTest =
 struct
   structure TestParser = Parser(ParserStreamIO)
@@ -154,7 +182,7 @@ struct
     fun exitC () = str "exit" >> return (true,())
     fun sayHelloC () = str "hello" >>
       delayed (fn () => (print "You typed hello!\n"; return (false, ())))
-    val interp = addCommand (addCommand interp exitC) sayHelloC
+    val interp = addCommands interp [exitC, sayHelloC]
   in
     interp
   end
@@ -176,9 +204,8 @@ in
   ()
 end;
 
-(*start ();*)
+[>start ();<]
 TestTest.readTest ();
 
 
 *)
-
