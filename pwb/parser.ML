@@ -351,9 +351,7 @@ struct
   fun pos (_,p) = p
 
   fun isReady (s,_) =
-    case TextIO.StreamIO.canInput (s,1) of
-         NONE => false
-       | SOME _ => true
+    maybe false (const true) (TextIO.StreamIO.canInput (s,1))
 
   fun isEnd (s,_) = TextIO.StreamIO.endOfStream s
 end;
