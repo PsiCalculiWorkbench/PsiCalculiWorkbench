@@ -37,7 +37,7 @@ echo
 if [ ! -z "$OUT" ]; then
     echo "PolyML.export(\"$OUT\", start);"
 fi
-[ $INTERACTIVE = yes ] && cat
+[ $INTERACTIVE = yes ] && echo "PwbSml.restoreOutput ();" && cat
 ) | $SML $SML_OPTS
 
 
