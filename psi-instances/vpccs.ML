@@ -207,6 +207,12 @@ struct
     val new      = new
   end)
 
+  fun isWellFormedOutSubj _ = Err.undefined ()
+  fun isWellFormedInSubj  _ = Err.undefined ()
+  fun isWellFormedInvArg  _ = Err.undefined ()
+  fun isWellFormedOutObj  _ = Err.undefined ()
+  fun isWellFormedCond    _ = Err.undefined ()
+  fun isWellFormedAssr    _ = Err.undefined ()
 end;
 
 
