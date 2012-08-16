@@ -15,6 +15,9 @@ sig
   val getLoadPaths : unit -> string list
   val setLoadPaths : string list -> unit
 
+  val getLoadedFiles : unit -> (string * string) list
+  val clearLoadedFiles : unit -> unit
+
   (* dumpUseRel relPath *)
   val dumpUseRel : string -> string
   val dumpUse : unit -> string
@@ -36,6 +39,10 @@ struct
   type loaded_files = (string * string) list
 
   val loadedFiles : loaded_files ref = ref []
+
+  fun getLoadedFiles () = !loadedFiles
+  fun clearLoadedFiles () = loadedFiles := []
+
   fun getCanonicalName fileName =
     fileName |> MissingIO.slurp |> MD5.md5 |> MD5.bintohex
   fun markAsLoadedFile fileName =
