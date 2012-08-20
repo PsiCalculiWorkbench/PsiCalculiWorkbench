@@ -8,7 +8,30 @@ sig
   val empty : 'a map
   val add   : 'a map -> key -> 'a -> 'a map
   val find  : 'a map -> key -> 'a option
-end; 
+end;
+
+
+signature FINITE_SET =
+sig
+  type elem
+  type set
+
+  val member : set -> elem -> bool
+  val add : set -> elem -> set
+  val empty : set
+end;
+
+
+signature FINITE_STREAM =
+sig
+  type stream
+  type elem
+
+  val head    : stream -> elem
+  val tail    : stream -> stream
+  val isEmpty : stream -> bool
+end;
+
 
 signature TRIE =
 sig
@@ -17,6 +40,7 @@ sig
   val trie  : 'a map -> digit -> 'a map option
   val value : 'a map -> 'a option
 end;
+
 
 signature TOTAL_ORDER =
 sig
@@ -42,7 +66,7 @@ struct
          (true, true) => Tree (l,k,v,r)
        | (true,false) => Tree (add l k v, k', v', r)
        | (false,true) => Tree (l, k', v', add r k v)
-       | _ => Err.error 
+       | _ => Err.error
         "The elements are not totaly ordered in UnbalancedBinaryMap.add"
 
   fun find Node _ = NONE
@@ -56,10 +80,21 @@ struct
 end;
 
 
-functor Trie(M: FINITE_MAP) : TRIE =
+functor Trie(A: sig
+  structure M: FINITE_MAP
+  structure S: FINITE_STREAM
+  sharing type M.key = S.elem
+end) : TRIE =
 struct
-  type key = M.key list
+  open A
+
+  type key = S.stream
   type digit = M.key
+
+  fun obs s =
+    if S.isEmpty s
+        then NONE
+        else SOME (S.head s, S.tail s)
 
   datatype 'a map = Trie of 'a option * 'a map M.map
 
@@ -70,31 +105,80 @@ struct
   fun value (Trie (SOME x,_)) = SOME x
     | value _ = NONE
 
-  fun find t [] = value t
-    | find t (k::ks) = 
-        Opt.bindO (trie t k)
-                  (fn t' => find t' ks)
+  fun find t s =
+    case obs s of
+         NONE => value t
+       | SOME (k,ks) =>
+           Opt.bindO (trie t k)
+                     (fn t' => find t' ks)
 
-  fun add (Trie (_,m)) [] x = Trie (SOME x, m)
-    | add (t as (Trie (v,m))) (k::ks) x = 
-    let
-      val t' = Opt.maybe empty Fun.id (trie t k)
-    in
-      Trie (v, M.add m k (add t' ks x))
-    end
+  fun add (t as (Trie (v,m))) s x =
+    case obs s of
+         NONE => Trie (SOME x, m)
+       | SOME (k,ks) =>
+            (let val t' = Opt.maybe empty Fun.id (trie t k)
+             in Trie (v, M.add m k (add t' ks x)) end)
 
 end;
 
 
-structure CharListTrie =
+structure FiniteStringStream :
+sig
+  include FINITE_STREAM
+  val make : string -> stream
+end =
+struct
+  type stream = int * string
+  type elem = char
+
+  fun isEmpty (i,s) = i >= String.size s
+  fun head (i,s) = String.sub (s,i)
+  fun tail (i,s) = (i+1,s)
+
+  fun make s = (0,s)
+end;
+
+
+structure StringTrie : TRIE =
 struct
   structure O = struct
     type elem = char
     fun leq a b = Char.<= (a,b)
   end
+  structure S = FiniteStringStream
   structure M = UnbalancedBinaryMap(O)
-  structure T = Trie(M)
+  structure T = Trie(struct
+    structure M = M
+    structure S = S
+  end)
   open T
+
+  type key = string
+  type 'a map = 'a T.map
+
+  fun ss s = S.make s
+
+  val empty = T.empty
+  fun add m k v = T.add m (ss k) v
+  fun find m k = T.find m (ss k)
+
+  type digit = char
+  val trie = T.trie
+  val value = T.value
+end;
+
+
+structure StringSet : FINITE_SET =
+struct
+  type elem = string
+  type set = unit StringTrie.map
+
+  fun member set el =
+    Opt.maybe false (Fun.const true) (StringTrie.find set el)
+
+  fun add set el = StringTrie.add set el ()
+
+  val empty = StringTrie.empty
 end;
 
 
