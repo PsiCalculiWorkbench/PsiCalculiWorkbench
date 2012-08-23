@@ -77,6 +77,7 @@ struct
     fun dataSort _ = DataSort.StrongAction
 
     val new = T.new
+    val newBasedOn = T.newBasedOn
 
 
     fun swap _ Tau = Tau
@@ -170,6 +171,7 @@ struct
       | support (Restriction(nl,c)) = Lst.minus (support c) nl
 
     val new = I.Term.new
+    val newBasedOn = I.Term.newBasedOn
 
     fun eq _ _ = Err.undefined ()
   end)
@@ -238,11 +240,6 @@ sig
   structure ClEnv      : PSI_CLAUSE_ENVIRONMENT
 
   val var : Psi.Inst.name -> Psi.Inst.term
-
-  (* XXX: this name appears in the input and output actions, as a name
-   * placeholder in a constraint, and in bisimulation algorithm.
-   *)
-  val nameOfConstrSort : unit -> Psi.Inst.name
 
   sharing ClEnv.Cl.Psi = Psi
   sharing Constraint.Inst = Psi.Inst
@@ -399,6 +396,7 @@ struct
       end
 
     val new = Tr.Psi.Inst.Term.new
+    val newBasedOn = Tr.Psi.Inst.Term.newBasedOn
 
     fun eq _ _ = Err.error "Define alpha equivalence for residual"
   end)
@@ -493,6 +491,7 @@ in
     fun fresh x c = not $ Lst.member x (support c)
 
     val new = P.new
+    val newBasedOn = P.newBasedOn
 
     fun eqData _ = Err.error "TODO: define alpha equivalence"
   end;
@@ -706,7 +705,7 @@ in
                 if (A.fresh a psi)
                     then [SOME ([(psi, p)], (SCOPE a))]
                     else
-                      let val nn = P.new a (A.support psi)
+                      let val nn = P.newBasedOn a (A.support psi)
                       in [SOME ([(psi, P.swap (a,nn) p)], (SCOPE nn))]
                       end
          | _ => [NONE]
@@ -717,7 +716,7 @@ in
             if (A.fresh a psi)
                 then [SOME ([(psi, p)], OPEN a)]
                 else
-                  let val nn = P.new a (A.support psi)
+                  let val nn = P.newBasedOn a (A.support psi)
                   in [SOME ([(psi, P.swap (a,nn) p)], (rulename nn))]
                   end
          | _ => [NONE]
@@ -765,7 +764,7 @@ in
     fun eval_axiom e (IN,  (psi, ip as (P.Input (m, [x], _, p)))) =
         (* y # psi, m, p, x   *)
         let
-          val y = P.new (SI.nameOfConstrSort ()) (* x *)
+          val y = P.new (* x *)
             (x :: (A.support psi) @ (T.support m) @ (P.support p))
         in
           SOME ( psi, ip, Act.Input (y, x), 
@@ -774,7 +773,7 @@ in
 
       | eval_axiom e (OUT, (psi, ip as (P.Output (m, n, p)))) =
         (* y # psi, m, p, n    *)
-        let val y = (P.new (SI.nameOfConstrSort ())
+        let val y = (P.new
             ((T.support n) @ (A.support psi) @ (T.support m) @ (P.support p)))
         in SOME ( psi, ip, Act.Output (y, [], n), 
                   channelEq (Res.SYMM, psi, m, SI.var y), p)
@@ -783,7 +782,7 @@ in
       | eval_axiom e (BRIN,  (psi, ip as (P.BrInput (m, [x], _, p)))) = 
         (* y # psi, m, p, x   *)
         let
-          val y = P.new x
+          val y = P.newBasedOn x
             (x :: (A.support psi) @ (T.support m) @ (P.support p))
         in
           SOME ( psi, ip, Act.BrInput (y, x), 
@@ -791,7 +790,7 @@ in
         end
       | eval_axiom e (BROUT, (psi, ip as (P.BrOutput (m, n, p)))) =
         (* y # psi, m, p, n    *)
-        let val y = (P.new (SI.nameOfConstrSort ())
+        let val y = (P.new
             ((T.support n) @ (A.support psi) @ (T.support m) @ (P.support p)))
         in SOME ( psi, ip, Act.BrOutput (y, [], n), 
                   channelEq (Res.BCAST, psi, m, SI.var y), p)
@@ -1027,7 +1026,7 @@ in
             NONE
           else let val (alpha, c) = 
 		       switchSubj (alpha, c) 
-                                  (L.new a (a :: (A.support psi)@ K.support c))
+                                  (L.newBasedOn a (a :: (A.support psi)@ K.support c))
                in SOME (psi, cP, alpha, abstractKVec [a] c, abstractP a dP)
                end
 
@@ -1048,8 +1047,7 @@ in
               (psi, cases)) =
               let
                 val sbj = if isTau alpha then [] else [Act.subj alpha]
-                val n = L.new (SI.nameOfConstrSort ())
-                              (sbj @ C.support cond @ K.support c)
+                val n = L.new (sbj @ C.support cond @ K.support c)
                 val (alpha, (cheq,constr)) = 
                     if isTau alpha 
                     then (alpha,c) 

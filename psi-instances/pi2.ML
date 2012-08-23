@@ -22,7 +22,8 @@ struct
 
   fun swap_name (a,b) n = StringName.swap_name (a,b) n
 
-  fun new _ xvec = StringName.generateDistinct xvec
+  fun newBasedOn _ xvec = StringName.generateDistinct xvec
+  fun new xvec = newBasedOn "a" xvec
 
   fun supportT n           = [n]
   fun supportC (Eq (a, b)) = [a, b]
@@ -75,6 +76,7 @@ struct
     val support  = supportT
     val eq       = eqT
     val new      = new
+    val newBasedOn = newBasedOn
   end)
 
   structure Cond = Nominal(struct
@@ -88,6 +90,7 @@ struct
     val support  = supportC
     val eq       = eqC
     val new      = new
+    val newBasedOn = newBasedOn
   end)
 
   structure Assr = Nominal(struct
@@ -101,6 +104,7 @@ struct
     val support  = supportA
     val eq       = eqA
     val new      = new
+    val newBasedOn = newBasedOn
   end)
 
   fun isWellFormedOutSubj _ = Err.undefined ()
@@ -447,8 +451,6 @@ struct
 
   end
 
-  fun nameOfConstrSort () = "a"
-
 end;
 
 structure SymbolicInstance : SYMBOLIC_PSI = struct
@@ -458,7 +460,6 @@ structure SymbolicInstance : SYMBOLIC_PSI = struct
   structure PsiInstance = PsiPiInstance.Inst
   structure Constraint  = PiSymbolicInstanceRequirements.Constraint
   val var               = PiSymbolicInstanceRequirements.var
-  val nameOfConstrSort  = PiSymbolicInstanceRequirements.nameOfConstrSort
 end
 
 

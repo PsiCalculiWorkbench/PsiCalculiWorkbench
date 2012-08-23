@@ -11,7 +11,8 @@ sig
   val atomSort  : atom -> AtomSort.sort
   val dataSort  : data -> DataSort.sort
 
-  val new       : atom -> atom list -> atom
+  val new       : atom list -> atom
+  val newBasedOn: atom -> atom list -> atom
 
   val swapAtom  : atom * atom -> atom -> atom
   val swap      : atom * atom -> data -> data
@@ -35,7 +36,8 @@ sig
 
   val swap      : atom * atom -> data -> data
   val support   : data -> atom list
-  val new       : atom -> atom list -> atom
+  val new       : atom list -> atom
+  val newBasedOn: atom -> atom list -> atom
 
   val eq  : (((atom * data) * (atom * data)) -> bool) ->
             data * data -> bool
@@ -60,6 +62,7 @@ struct
   val swap    = N.swap
   val support = N.support
   val new     = N.new
+  val newBasedOn= N.newBasedOn
 
   fun fresh a d = not (Lst.member a (support d))
 
@@ -70,7 +73,7 @@ struct
     if a = a'
       then eqData (x,x')
       else let
-        val a'' = new a ([a,a'] @ (support x) @ (support x'))
+        val a'' = newBasedOn a ([a,a'] @ (support x) @ (support x'))
       in
         eqData (swap (a,a'') x, swap (a',a'')  x')
       end
@@ -86,7 +89,8 @@ functor NominalName(N: sig
   eqtype atom
 
   val atomSort  : atom -> AtomSort.sort
-  val new       : atom -> atom list -> atom
+  val new       : atom list -> atom
+  val newBasedOn: atom -> atom list -> atom
 end): NOMINAL =
 struct
   structure AtomSort = N.AtomSort
@@ -105,6 +109,7 @@ struct
   fun fresh a b = a <> b
   val swap      = swapAtom
   val new       = N.new
+  val newBasedOn= N.newBasedOn
 
   fun eqData (n,m) = n = m
 end;
@@ -125,6 +130,7 @@ struct
   fun fresh a b = a <> b
   val swap      = swapAtom
   val new       = N.new
+  val newBasedOn= N.newBasedOn
 
   fun eqData (n,m) = n = m
 end;
@@ -149,6 +155,7 @@ struct
   fun support l = List.concat (map A.support l)
   fun fresh a l = List.all (A.fresh a) l
   val new       = A.new
+  val newBasedOn= A.newBasedOn
 
   fun eqData ([], [])       = true
     | eqData ([], ms)       = false
@@ -160,7 +167,8 @@ end;
 functor NominalNameList (N: sig
   structure AtomSort: SORT
   eqtype atom
-  val new      : atom -> atom list -> atom
+  val new       : atom list -> atom
+  val newBasedOn: atom -> atom list -> atom
   val atomSort : atom -> AtomSort.sort
 end) : NOMINAL = NominalList (NominalName (N));
 
@@ -187,7 +195,7 @@ struct
 
     fun genPI pi [] _ = pi
       | genPI pi (d::dirty) supp =
-      let val n = N.new d supp
+      let val n = N.newBasedOn d supp
       in genPI ((d,n)::pi) dirty (n::supp)
       end
  
@@ -204,7 +212,8 @@ end;
 
 functor NominalNameListUnsorted(N: sig
   eqtype atom
-  val new      : atom -> atom list -> atom
+  val new       : atom list -> atom
+  val newBasedOn: atom -> atom list -> atom
 end) : NOMINAL = NominalNameList (struct
   structure AtomSort = struct datatype sort = UNI fun eq _ = true end
   open N

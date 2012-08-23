@@ -74,8 +74,9 @@ struct
         then (sa, StringName.swap_name (a,b) n)
         else (sn, n)
 
-  fun new (sn, _) xvec =
+  fun newBasedOn (sn, _) xvec =
     (sn, StringName.generateDistinct (map (fn (_,x) => x) xvec))
+  fun new xvec = newBasedOn (Channel, "a") xvec
 
 
   fun supportT (TExp exp)   = expSupp exp
@@ -179,6 +180,7 @@ struct
     val support  = supportT
     val eq       = eqT
     val new      = new
+    val newBasedOn=newBasedOn
   end)
 
   structure Cond = Nominal(struct
@@ -192,6 +194,7 @@ struct
     val support  = supportC
     val eq       = eqC
     val new      = new
+    val newBasedOn=newBasedOn
   end)
 
   structure Assr = Nominal(struct
@@ -205,6 +208,7 @@ struct
     val support  = supportA
     val eq       = eqA
     val new      = new
+    val newBasedOn=newBasedOn
   end)
 
   fun isWellFormedOutSubj _ = Err.undefined ()
@@ -228,8 +232,6 @@ struct
   structure BisimConstraint = SymBisimConstraint(VPCCSPsiInstance)
 
   fun var n               = TName n
-  fun nameOfConstrSort () = (Channel, "a")
-
 
   open Constraint
 
@@ -285,7 +287,7 @@ struct
                     val yy = (Channel, y)
                     val yyy = TName yy
                     val xx = (Channel, x)
-                    val n = L.new yy bs
+                    val n = L.newBasedOn yy bs
                     val nbs = L.swap (yy, n) bs
                     val cnd = ChEq (TName (Channel, a), TName (Channel, b))
                     val cnd' = swapC (n,yy) cnd
@@ -362,7 +364,6 @@ structure VPCCSSymbolicInstance : SYMBOLIC_PSI = struct
   structure PsiInstance = VPCCSPsiInstance.Inst
   structure Constraint  = VPCCSSymbolicInstanceRequisites.Constraint
   val var               = VPCCSSymbolicInstanceRequisites.var
-  val nameOfConstrSort  = VPCCSSymbolicInstanceRequisites.nameOfConstrSort
 end
 structure VPCCSSymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct

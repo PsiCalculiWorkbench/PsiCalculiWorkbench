@@ -147,6 +147,7 @@ struct
       Lst.minus (Inst.Assr.support psi) avec
 
     val new = P.new
+    val newBasedOn = P.newBasedOn
 
     fun eq alphaEq (Frame ([], psi1), Frame ([], psi2)) =
             Inst.Assr.eqData (psi1, psi2)
@@ -216,6 +217,7 @@ struct
 
   val swapAtom = P.Inst.Term.swapAtom
   val new = P.Inst.Term.new
+  val newBasedOn = P.Inst.Term.newBasedOn
 
   fun eqData _ = Err.error "TODO: define alpha equivalence for clauses"
 
@@ -314,6 +316,7 @@ struct
     fun dataSort _ = DataSort.PsiSort
 
     val new        = I.Term.new
+    val newBasedOn = I.Term.newBasedOn
 
     structure L = NominalNameList(I.Term)
 
@@ -373,7 +376,7 @@ struct
                | xs::xss =>
                    let
                      val permute = Lst.foldr
-                     val x = new xs
+                     val x = newBasedOn xs
                               $ xvec @ xvec' @ I.Term.support n
                               @ I.Term.support n' @ support p @ support p'
                      val pi  = map (Tpl.tuple x) xvec

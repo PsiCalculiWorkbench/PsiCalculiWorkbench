@@ -121,6 +121,7 @@ struct
       | support (StImp (f,g))    = Assr.support f @ Assr.support g
 
     val new = Term.new
+    val newBasedOn = Term.newBasedOn
 
     fun eq aEq (True,True) = true
       | eq aEq (False,False) = true
@@ -456,7 +457,7 @@ struct
   fun resetNames ()= xNames := []
   fun newName xvec =
   let
-    val y = Psi.Inst.Term.new (SymPsi.nameOfConstrSort ()) xvec
+    val y = Psi.Inst.Term.new xvec
     val () = addName y
   in
     y
@@ -559,7 +560,7 @@ struct
            val cpi  = C.swap (y, y')
                              (translateC [] cpi)
            val supCpi = C.support cpi
-           val x = Psi.Inst.Term.new x' (y :: supP @ supQ @ supC @ supCpi)
+           val x = Psi.Inst.Term.newBasedOn x' (y :: supP @ supQ @ supC @ supCpi)
            val pi = Psi.swap (x,x') pi
          in
            ((y, x), cpi, pi)
