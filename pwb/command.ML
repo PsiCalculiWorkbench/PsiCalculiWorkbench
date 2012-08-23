@@ -8,8 +8,7 @@
         pwb/pp-sim,
         pwb/simulator,
         pwb/bisim,
-        pwb/cr,
-        pwb/command-interpreter
+        pwb/cr
 *)
 
 
