@@ -1,0 +1,13 @@
+*.aux
+*.bbl
+*.blg
+*.idx
+*.ilg
+*.ind
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.swp
+.DS_Store
