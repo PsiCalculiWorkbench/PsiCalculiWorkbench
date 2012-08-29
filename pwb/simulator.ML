@@ -191,11 +191,6 @@ sig
 
   val var : Psi.Inst.name -> Psi.Inst.term
 
-  (* XXX: this name appears in the input and output actions, as a name
-   * placeholder in a constraint, and in bisimulation algorithm.
-   *)
-  val nameOfConstrSort : unit -> Psi.Inst.name
-
   sharing ClEnv.Cl.Psi = Psi
   sharing Constraint.Inst = Psi.Inst
 end;
