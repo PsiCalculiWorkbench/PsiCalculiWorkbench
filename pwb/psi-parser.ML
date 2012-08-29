@@ -184,24 +184,7 @@ in
                 return (fn p => Output (m, n, p))))
 
 
-  and brinput () =
-                        inputSubj () >>=
-    (fn m =>   t "?" >> inputObj  () >>=
-    (fn (xvec, n) =>    return (fn p => BrInput (m, xvec, n, p))
-    ))
-
-  and broutput () =
-                t "'"  >> term >>=
-    (fn m =>    t "!<" >> term >>=
-    (fn n =>    t ">"  >>
-                return (fn p => BrOutput (m, n, p))))
-
-
-  and prefix' () =
-             output   () </choice/> input   ()
-             </choice/>
-             broutput () </choice/> brinput ()
-
+  and prefix' () = output () </choice/> input ()
   and prefix  () =
                 prefix' () >>=
     (fn p =>    ((t "." >>
