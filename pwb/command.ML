@@ -223,30 +223,19 @@ struct
 
   fun ppCbrackets ctx doc = text "{|" </sp/> doc </sp/> text "|}"
 
-  fun ppResSequence ctx avec =
-      if null avec
-      then empty
-      else text "(new" </sp/>
-		commaSep (map PsiPP.n avec) </join/> text ")"
-
   fun ppAtomicConstraint ctx (avec, psi, phi) =
-      (ppResSequence ctx avec)
-	  </join/>
-          (ppCbrackets ctx $
-                       (if Psi.Inst.Assr.eqData (psi, Psi.Inst.unit)
-			then empty
-			else PsiPP.a psi </sp/> text "|-" </join/> text " ")
-                       </join/> PsiPP.c phi)
+    (if null avec
+        then empty
+        else text "(new" </sp/>
+             commaSep (map PsiPP.n avec) </join/> text ")") </join/>
+             (ppCbrackets ctx $
+                (if Psi.Inst.Assr.eqData (psi, Psi.Inst.unit)
+                    then empty
+                    else PsiPP.a psi </sp/> text "|-" </join/> text " ")
+                    </join/> PsiPP.c phi)
 
-  fun ppConstraint ctx (SCS.Constraint.Atomic (psi,phi)) =
-      ppAtomicConstraint ctx ([],psi,phi)
-    | ppConstraint ctx (SCS.Constraint.Conjunction [])  = text "true"
-    | ppConstraint ctx (SCS.Constraint.Conjunction [c]) = ppConstraint ctx c
-    | ppConstraint ctx (SCS.Constraint.Conjunction cl)  =
-      (ppCbrackets ctx $ sep (text " /\\ ") $ map (ppConstraint ctx) cl)
-    | ppConstraint ctx (SCS.Constraint.Exists(a,b,c))   = text "TBD"
-    | ppConstraint ctx (SCS.Constraint.Restriction(avec,c)) =
-      (ppResSequence ctx avec) </join/> (ppConstraint ctx c)
+  fun ppConstraint ctx c =
+    sep (text " /\\ ") $ map (ppAtomicConstraint ctx) c
 
   fun ppParens ctx d = text "(" </join/> d </join/> text ")"
 
@@ -414,8 +403,6 @@ struct
   fun invocations (Psi.Nil) = []
     | invocations (Psi.Output _) = []
     | invocations (Psi.Input _) = []
-    | invocations (Psi.BrOutput _) = []
-    | invocations (Psi.BrInput _) = []
     | invocations (Psi.Case cs) = List.concat $ map (invocations o snd) cs
     | invocations (Psi.Restriction (_,p)) = invocations p
     | invocations (Psi.Parallel (p,q)) = (invocations p) @ (invocations q)
@@ -617,7 +604,6 @@ struct
 
   fun stepAgentC
         reduce
-	cast
         ppAlpha
         (wctx as (ctx,(agent::agents))) =
   let
@@ -627,7 +613,7 @@ struct
     val transitions = fst $
         List.partition (fn (_,_,_,RIGHT _,_) => true | _ => false) $
         map (fn (psi,p,alpha,c,p') =>
-            (psi, alpha, cast c, SCS.solve (cast c), p')) tr
+            (psi, alpha, c, SCS.solve c, p')) tr
 
     val transitions = transitions |> flatmap
         (fn (tr as (psi, alpha, c, RIGHT sol, p')) =>
@@ -664,34 +650,15 @@ struct
                 return (setEof ctx,[])
                 )
   end
-    | stepAgentC _ _ _ _ =
+    | stepAgentC _ _ _ =
         Err.error "sstepAgentC called without giving an agent"
 
 
-  fun sim2scs (Sim.Constraint.Atomic arg) =
-      SCS.Constraint.Atomic arg
-    | sim2scs (Sim.Constraint.Conjunction cl) =
-      SCS.Constraint.Conjunction (map sim2scs cl)
-    | sim2scs (Sim.Constraint.Exists (a,b,c)) =
-      SCS.Constraint.Exists (a,b,sim2scs c)
-    | sim2scs (Sim.Constraint.Restriction (nl,c)) =
-      SCS.Constraint.Restriction (nl,sim2scs c)
-
   fun sstepAgentC wctx =
-    stepAgentC Sim.reduce sim2scs ppAlphaSim wctx
-
-
-  fun si2scs (SI.Constraint.Atomic arg) =
-      SCS.Constraint.Atomic arg
-    | si2scs (SI.Constraint.Conjunction cl) =
-      SCS.Constraint.Conjunction (map si2scs cl)
-    | si2scs (SI.Constraint.Exists (a,b,c)) =
-      SCS.Constraint.Exists (a,b,si2scs c)
-    | si2scs (SI.Constraint.Restriction (nl,c)) =
-      SCS.Constraint.Restriction (nl,si2scs c)
+    stepAgentC Sim.reduce ppAlphaSim wctx
 
   fun wsstepAgentC wctx =
-    stepAgentC WSim.reduce si2scs ppWAlphaSim wctx
+    stepAgentC WSim.reduce ppWAlphaSim wctx
 
 
   fun symbolicStepC ctx name stepF =

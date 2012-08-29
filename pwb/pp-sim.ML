@@ -36,7 +36,7 @@ struct
     case alpha of
          Act.Tau => text "tau"
        | Act.Output (y,avec,m) =>
-           n y </join/>
+           t y </join/>
                     (if not (null avec)
                         then
                                      text "(\\"
@@ -46,6 +46,6 @@ struct
                             text " ")
                   </join/> t m
        | Act.Input (z,x) =>
-           n z </join/> text "(" </join/> n x </join/> text ")"
+           t z </join/> text "(" </join/> n x </join/> text ")"
 
 end;
