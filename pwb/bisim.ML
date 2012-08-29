@@ -395,6 +395,8 @@ struct
   fun permute swap pi t =
     List.foldr (fn ((a,b), t) => swap (a,b) t) t pi
 
+  fun unvar x = hd $ Psi.Inst.Term.support x
+
   fun framePsi p = F.f p |> F.assertion
 
   val emptyT        = []
@@ -410,15 +412,12 @@ struct
   val emptyEnv = WSim.Sim.ClEnv.empty
   val unitPsi = Psi.Inst.unit
 
-  fun translateC nl (TC.Conjunction l)     = translateL nl l
-    | translateC nl (TC.Atomic(psi,phi))   = Atomic(nl,psi,phi)
-    | translateC nl (TC.Restriction(nl',c)) = translateC (nl'@nl) c
-    | translateC _ _ = Err.error "Existential quantifiers in Bisimulation TBD"
-  and translateL nl [] = True
-    | translateL nl l  = Lst.reduce Conj $ List.map (translateC nl) l
+  fun translateC []         = True
+    | translateC [c]        = Atomic c
+    | translateC (c::cstrs) = Conj (Atomic c, translateC cstrs)
 
   fun collectCstrDeriv trs =
-    map (fn (psi,p,alpha,c,p') => (translateC [] c,p')) trs
+    map (fn (psi,p,alpha,c,p') => (translateC c,p')) trs
 
 
   fun freshness avec p =
@@ -448,8 +447,6 @@ struct
   fun weakIn p =
     List.filter (fn (psi,p,WSim.Tr.Input _,c,p') => true | _ => false
                 ) $ WSim.reduce emptyEnv unitPsi p
-
-  val noConstraint = (NONE, TC.Conjunction [])
 
   val xNames       = ref ([] : Psi.Inst.name list)
   fun addName a    = xNames := (a :: !xNames)
@@ -506,11 +503,11 @@ struct
               val supQ = Psi.support q
               val supC = C.support c
               val y    = newName (supP @ supQ @ supC @ usedNames ())
-              val cpi  = C.swap (y, y') (translateC [] cpi)
+              val cpi  = C.swap (y, unvar y') (translateC cpi)
             in
-              (RA.makeFresh avec (WSim.Sim.Tr.Act.Output (y',avec,n), noConstraint, pi)
+              (RA.makeFresh avec (WSim.Sim.Tr.Act.Output (y',avec,n), pi)
                 ([y] @ supP @ supQ @ supC @ (C.support cpi))) |>
-                (fn (WSim.Sim.Tr.Act.Output (_, avec, n), _, pi) =>
+                (fn (WSim.Sim.Tr.Act.Output (_, avec, n), pi) =>
                     ((y, avec, n), cpi, pi)
                   | _ => Err.undefined ())
             end
@@ -524,7 +521,7 @@ struct
             |> map
             (fn (psi,q,WSim.Tr.Output (z,cvec,n'),cqj,qj) =>
                 ((y, avec, permute Psi.Inst.Term.swap (zip avec cvec) n'),
-                 C.swap (z, y) (translateC [] cqj),
+                 C.swap (unvar z, y) (translateC cqj),
                  permute Psi.swap (zip avec cvec) qj)
               | _ => Err.undefined () )
           val (civec,tivec) = ListPair.unzip $ map (fn ((z,cvec,n'),cqj,qj) =>
@@ -557,8 +554,8 @@ struct
            val supQ = Psi.support q
            val supC = C.support c
            val y    = newName (supP @ supQ @ supC @ usedNames ())
-           val cpi  = C.swap (y, y')
-                             (translateC [] cpi)
+           val cpi  = C.swap (y, unvar y')
+                             (translateC cpi)
            val supCpi = C.support cpi
            val x = Psi.Inst.Term.newBasedOn x' (y :: supP @ supQ @ supC @ supCpi)
            val pi = Psi.swap (x,x') pi
@@ -568,7 +565,7 @@ struct
     val (cvec,tvec) = ListPair.unzip (map (fn ((y,x), cpi, pi) =>
         let
           val qtr = weakIn q |> map (fn (psi,q,WSim.Tr.Input (z,x'),cqj,qj) =>
-            ((y, x), C.swap (y,z) (translateC [] cqj), Psi.swap (x,x') qj)
+            ((y, x), C.swap (y,unvar z) (translateC cqj), Psi.swap (x,x') qj)
             | _ => Err.undefined () )
           val (civec,tivec) = ListPair.unzip (map (fn ((z,x),cqj,qj) =>
             let
