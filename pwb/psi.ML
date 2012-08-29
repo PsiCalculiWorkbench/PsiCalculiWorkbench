@@ -31,8 +31,6 @@ sig
   type assertion = Assr.data
 
   val chaneq     : term * term -> condition
-  val brReceive  : term * term -> condition
-  val brTransmit : term * term -> condition
   val compose    : assertion * assertion -> assertion
   val unit       : assertion
   val entails    : assertion * condition -> bool
@@ -63,10 +61,8 @@ sig
     = Nil
     (* Output (m, n, p) == 'M<N>.P  *)
     | Output      of Inst.term * Inst.term * psi
-    | BrOutput    of Inst.term * Inst.term * psi
     (* Input (m, xvec, n, p) == M(\xvec)N.P *)
     | Input       of Inst.term * (Inst.name list) * Inst.term * psi
-    | BrInput     of Inst.term * (Inst.name list) * Inst.term * psi
     | Case        of (Inst.condition * psi) list
     | Restriction of Inst.name * psi
     | Parallel    of psi * psi
@@ -171,8 +167,6 @@ struct
 
   fun f (Input _)             = unit_frame
     | f (Output _)            = unit_frame
-    | f (BrInput _)           = unit_frame
-    | f (BrOutput _)          = unit_frame
     | f (Case _)              = unit_frame
     | f (Replication _)       = unit_frame
     | f (Assertion a)         = Frame ([], a)
@@ -279,10 +273,8 @@ struct
     = Nil
     (* Output (m, n, p) == 'M<N>.P  *)
     | Output      of term * term * psi
-    | BrOutput    of term * term * psi
     (* Input (m, xvec, n, p) == M(\xvec)N.P *)
     | Input       of term * (name list) * term * psi
-    | BrInput     of term * (name list) * term * psi
     | Case        of (condition * psi) list
     | Restriction of name * psi
     | Parallel    of psi * psi
@@ -325,10 +317,6 @@ struct
           Output (swapT ab m, swapT ab n, swap ab p)
       | swap ab (Input (m, xvec, n, p)) =
           Input (swapT ab m, L.swap ab xvec, swapT ab n, swap ab p)
-      | swap ab (BrOutput (m, n, p)) =
-          BrOutput (swapT ab m, swapT ab n, swap ab p)
-      | swap ab (BrInput (m, xvec, n, p)) =
-          BrInput (swapT ab m, L.swap ab xvec, swapT ab n, swap ab p)
       | swap ab (Case cases) =
           Case (map (fn (c, p) => (swapC ab c, swap ab p)) cases)
       | swap ab (Restriction (n, p)) =
@@ -349,9 +337,6 @@ struct
     fun support Nil = []
       | support (Output (m,n,p)) = supportT m @ supportT n @ support p
       | support (Input (m,xvec,n,p)) =
-        supportT m @ Lst.minus (supportT n @ support p) xvec
-      | support (BrOutput (m,n,p)) = supportT m @ supportT n @ support p
-      | support (BrInput (m,xvec,n,p)) =
         supportT m @ Lst.minus (supportT n @ support p) xvec
       | support (Case cases) =
         List.concat (map (fn (phi,p) =>
@@ -389,10 +374,6 @@ struct
                    in
                      I.Term.eqData (n,n') andalso eq alphaEq (p,p')
                    end)
-      | eq alphaEq (BrOutput (m,n,p), BrOutput (m',n',p')) =
-        I.Term.eqData (m,m') andalso I.Term.eqData (n,n') andalso eq alphaEq (p,p')
-      | eq alphaEq (BrInput (m,xvec,n,p), BrInput (m',xvec',n',p')) =
-	eq alphaEq (Input (m,xvec,n,p), Input (m',xvec',n',p'))
       | eq alphaEq (Case cs, Case cs') =
         caseEq alphaEq cs cs'
       | eq alphaEq (Restriction (a,p), Restriction (a',p')) =
@@ -424,8 +405,6 @@ struct
   fun subst' _ Nil = Nil
     | subst' s (Output (m,n,p)) =
         Output (substT s m, substT s n, subst' s p)
-    | subst' s (BrOutput (m,n,p)) =
-        BrOutput (substT s m, substT s n, subst' s p)
     | subst' s (Case cases) =
         Case (map (fn (cond, p) => (substC s cond, subst' s p)) cases)
     | subst' s (Parallel (p, q)) =
@@ -457,9 +436,6 @@ struct
                Input (substT s m, xvec, substT s n, subst' s p)
                | _ => Err.undefined ())
         end
-    | subst' s (BrInput args) =
-      subst' s (Input args) |> (fn (Input args') => BrInput args'
-				 | _             => Err.undefined ())
     | subst' s (Invocation (k, mvec)) =
         Invocation (k, map (substT s) mvec)
 
@@ -488,10 +464,6 @@ struct
         lf p $ isWellFormedAssr psi
     | isWellformed (p as (Invocation (_,ms))) =
         lf p $ bindAll (map isWellFormedInvArg ms)
-
-        (* TODO *)
-    | isWellformed (BrInput _) = Err.undefined ()
-    | isWellformed (BrOutput _) = Err.undefined ()
   end
 
   fun isSubstSeqWellformed' [] err = err
