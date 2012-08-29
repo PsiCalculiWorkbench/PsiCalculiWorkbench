@@ -699,7 +699,7 @@ struct
     (fn a =>    ws >> tr () >>
                 direct (fn stream =>
                     let
-                      val () = output ctx "Type <num> for selecting derivative, b - for bactracking, q - quit"
+                      val () = output ctx "Type <num> for selecting derivative, b - for backtracking, q - quit"
                       val (_,s) = interactiveStatements
                                         (ctx, [a])
                                         (name ^ ">")
