@@ -1,4 +1,6 @@
-(* uses pwb/missing, pwb/simulator *)
+(* uses pwb/missing,
+        pwb/simulator
+*)
 
 signature WEAK_SYMBOLIC_TRANSITION =
 sig
@@ -9,10 +11,8 @@ sig
   datatype weak_action
     = Silent
     | Tau
-    | Output   of Psi.Inst.name * Psi.Inst.name list * Psi.Inst.term
-    | Input    of Psi.Inst.name * Psi.Inst.name
-    | BrOutput of Psi.Inst.name * Psi.Inst.name list * Psi.Inst.term
-    | BrInput  of Psi.Inst.name * Psi.Inst.name
+    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term
+    | Input  of Psi.Inst.term * Psi.Inst.name
 
   type weak_transition
     = Psi.Inst.assertion
@@ -34,10 +34,8 @@ struct
   datatype weak_action
     = Silent
     | Tau
-    | Output   of Psi.Inst.name * Psi.Inst.name list * Psi.Inst.term
-    | Input    of Psi.Inst.name * Psi.Inst.name
-    | BrOutput of Psi.Inst.name * Psi.Inst.name list * Psi.Inst.term
-    | BrInput  of Psi.Inst.name * Psi.Inst.name
+    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term
+    | Input  of Psi.Inst.term * Psi.Inst.name
 
   type weak_transition
     = Psi.Inst.assertion
@@ -50,7 +48,6 @@ signature WEAK_SYMBOLIC_PSI_SIMULATOR =
 sig
   structure Sim : SYMBOLIC_PSI_SIMULATOR
   structure Tr  : WEAK_SYMBOLIC_TRANSITION
-  sharing Sim.Tr.Constraint = Tr.Constraint
 
   (**
    * Compute all weak transitions
@@ -88,13 +85,11 @@ struct
 
   open Missing
 
-  fun translateAction  Sim.Tr.Act.Tau           = Tr.Tau
-    | translateAction (Sim.Tr.Act.Output   out) = Tr.Output   out
-    | translateAction (Sim.Tr.Act.Input    inp) = Tr.Input    inp
-    | translateAction (Sim.Tr.Act.BrOutput out) = Tr.BrOutput out
-    | translateAction (Sim.Tr.Act.BrInput  inp) = Tr.BrInput  inp
+  fun translateAction  Sim.Tr.Act.Tau         = Tr.Tau
+    | translateAction (Sim.Tr.Act.Output out) = Tr.Output out
+    | translateAction (Sim.Tr.Act.Input  inp) = Tr.Input  inp
 
-  fun silent1 e psi p = [(psi, p, Tr.Silent, Tr.Constraint.Conjunction [], p)]
+  fun silent1 e psi p = [(psi, p, Tr.Silent, [], p)]
 
   and silent2 e psi p =
   let
@@ -103,7 +98,7 @@ struct
   in
     taus |> Lst.flatmap
         (fn (psi,p  ,_,c ,p'') => silent e psi p'' |> map
-        (fn (psi,p'',_,c',p' ) => (psi, p, Tr.Silent, Tr.Constraint.compose c c', p')))
+        (fn (psi,p'',_,c',p' ) => (psi, p, Tr.Silent, c @ c', p')))
   end
 
   and silent e psi p =
@@ -114,8 +109,7 @@ struct
         (fn (psi,p,_,c,p'')         => (Sim.reduce e psi p'') |> Lst.flatmap
         (fn (psi,p'',alpha,c',p''') => (silent e psi (p''')) |> map
         (fn (psi,p''',_,c'',p')     =>
-            (psi,p,translateAction alpha, 
-	     Tr.Constraint.compose c (Tr.Constraint.compose c' c''),p')))))
+            (psi,p,translateAction alpha, c @ c' @ c'',p')))))
 
 
   and reduce e psi p = silent e psi p @ action e psi p
