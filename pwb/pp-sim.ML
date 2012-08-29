@@ -47,7 +47,5 @@ struct
                   </join/> t m
        | Act.Input (z,x) =>
            n z </join/> text "(" </join/> n x </join/> text ")"
-       | Act.BrOutput (y,avec,m) => text "!" </join/> (ppAction (Act.Output(y,avec,m)))
-       | Act.BrInput  (z,x)      => text "?" </join/> (ppAction (Act.Input(z,x)))
 
 end;
