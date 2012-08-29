@@ -137,21 +137,9 @@ in
         group $
         text "'" </join/> t m </join/>
             (enclose "<" (t n) ">") </dot/> p
-    | print' (BrOutput (m, n, p)) =
-        group $
-        text "'" </join/> t m </join/> text "!" </join/> 
-            (enclose "<" (t n) ">") </dot/> p
     | print' (inp as Input (m, xvec, nn, p)) =
         group $
         t m  </join/>
-            (if isSingleInput inp
-                then enclose "(" (commaSep (map n xvec)) ")"
-                else enclose "(\\" (commaSep (map n xvec)) ")"
-                </join/> t nn )
-                </dot/> p
-    | print' (inp as BrInput (m, xvec, nn, p)) =
-        group $
-        t m  </join/> text "?" </join/>
             (if isSingleInput inp
                 then enclose "(" (commaSep (map n xvec)) ")"
                 else enclose "(\\" (commaSep (map n xvec)) ")"
