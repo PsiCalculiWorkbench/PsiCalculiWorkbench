@@ -142,33 +142,19 @@ struct
   structure L = NominalNameList(PsiPiInstance.Inst.Term)
       (* struct type atom = name val new = new end) *)
 
-  fun mgu avec (Constraint.Atomic(Unit,  F)) cs sigma =              (*@ (\textsc{False}) @*)
-      Either.LEFT [F]
-    | mgu avec (Constraint.Atomic(Unit,  T)) cs sigma =              (*@ (\textsc{Tr2}) @*)
-      mgul avec cs sigma
-    | mgu avec (Constraint.Exists _) cs sigma = Err.error "Existential quantifier found!"
-    | mgu avec (Constraint.Conjunction cs) cs' sigma = 
-      mgul avec (cs@cs') sigma
-    | mgu avec (Constraint.Restriction (bvec,c)) cs sigma =
-      (* Or should we just freshen bvec in cs and carry on as c::cs? *)
-      (case mgu (avec@bvec) c [] sigma of   
-           Either.RIGHT sigma' => mgul avec 
-				       (List.map (fn c => Constraint.subst c sigma') cs)
-				       sigma'
-	 | Either.LEFT phi     => Either.LEFT  phi)
-    | mgu avec (Constraint.Atomic(Unit, (Eq (a,b)))) cs sigma =
-      if a = b then mgul avec cs sigma                       (*@ (\textsc{Tr1}) @*)
+  fun mgu [] sigma = Either.RIGHT sigma                (*@ $\Box$ @*)
+    | mgu ((avec, Unit,  T )::cs) sigma =              (*@ (\textsc{Tr2}) @*)
+      mgu cs sigma
+    | mgu ((avec, Unit, (Eq (a,b)))::cs) sigma =
+      if a = b then mgu cs sigma                       (*@ (\textsc{Tr1}) @*)
       else
         if L.fresh a avec andalso L.fresh b avec       (*@ (\textsc{Elim})@*)
-            then mgul avec 
-		     (List.map (fn c => Constraint.subst c [(b,a)]) cs)
+            then mgu (Constraint.subst cs [(b,a)])
                      (composeSubst sigma (b,a))
             else Either.LEFT [Eq (a,b)]                (*@ $\blacksquare$ @*)
-  and mgul _ [] sigma = Either.RIGHT sigma                (*@ $\Box$ @*)
-    | mgul avec (c::cs) sigma = mgu avec c cs sigma
 
   fun solve cs =
-    case mgu [] cs [] [] of
+    case mgu cs [] of
          Either.RIGHT sigma => Either.RIGHT [(sigma, Unit)]
        | Either.LEFT phi    => Either.LEFT  [phi]
 
