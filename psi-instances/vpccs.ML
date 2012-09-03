@@ -125,12 +125,16 @@ struct
     s |>
     filter (fn ((Variable, _), _) => true | _ => false) |>
     map (fn (x, TVal v) => (x, ExpVal v)
-          | _ => Err.error "Variables can be substituted only for values")
+          | (x, TName n) => (x, ExpVar n)
+          | (x, TExp (ExpVar n)) => (x, ExpVar n)
+          | _ =>
+              Err.error "Variables can be substituted only for values")
 
 
   fun substT s (TExp m) = substEvalExp (termSigmaToExp s) m |> either TExp TVal
     | substT s (v as (TVal _)) = v
-    | substT s (TName _) = Err.error "Channels are not values"
+    (*| substT s (TName _) = Err.error "Channels are not values"*)
+    | substT s x = x
 
 
   fun substC s (v as (CVal _)) = v
@@ -235,11 +239,14 @@ struct
 
   open Constraint
 
-  fun lineariseConstraint (Atomic (_,c)) = [([], c)]
-    | lineariseConstraint (Restriction (bs, c)) =
-        map (fn (ns, cnd) => (bs @ ns, cnd)) (lineariseConstraint c)
-    | lineariseConstraint (Conjunction cs) = flatmap lineariseConstraint cs
-    | lineariseConstraint (Exists _) = Err.error "Exists constraint encountered"
+  (*fun lineariseConstraint (Atomic (_,c)) = [([], c)]*)
+    (*| lineariseConstraint (Restriction (bs, c)) =*)
+        (*map (fn (ns, cnd) => (bs @ ns, cnd)) (lineariseConstraint c)*)
+    (*| lineariseConstraint (Conjunction cs) = flatmap lineariseConstraint cs*)
+    (*| lineariseConstraint (Exists _) = Err.error "Exists constraint encountered"*)
+
+  fun lineariseConstraint cs =
+    map (fn (avec,psi,c) => (avec,c)) cs
 
 
   fun expToEq (ExpAdd (a,b)) = expToEq a @ expToEq b
