@@ -1,7 +1,4 @@
 
-At the moment two psi-calculi are loadable: pi2.ML and vpccs.ML. Others work
-with and are included in older versions of Pwb.
-
 To load a psi-calculi, execute
 
     tools/psi load-instance <file.ML>
