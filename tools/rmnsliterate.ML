@@ -1,6 +1,9 @@
-structure DC =
+(* uses pwb/missing,
+        pwb/parser
+ *)
+
+structure RmnsLiterateProgram =
 struct
-  (* structure Parser = Parser(StringStream) *)
   structure Parser = Parser(ParserStreamIO)
   open Parser
   open Missing
