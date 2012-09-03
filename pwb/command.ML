@@ -283,7 +283,7 @@ struct
     text "]" </join/> line
 
   fun ppBisim ctx (c,t) =
-    text "Relation:" </breakableSp ctx/>
+    text "Constraint Table:" </breakableSp ctx/>
     ((text "{" </nl/>
        (List.foldr (fn ((i, ((p,q), c) ), d) =>
            text (Int.toString i) </join/> text "." </sp/>
@@ -305,9 +305,10 @@ struct
     fun sl (sigma, psi) = text "(" </join/> commaSep [s sigma, PsiPP.a psi]
       </join/> text ")"
   in
-    (fn RIGHT sol' => group $ sep (text "," </join/> line) (map sl sol')
+    text "Solution: " </join/>
+    ((fn RIGHT sol' => group $ sep (text "," </join/> line) (map sl sol')
       | _ => text "No solution found")
-      sol
+      sol)
   end
 
   fun ppDescr msg doc =
@@ -617,7 +618,10 @@ struct
 
     val transitions = transitions |> flatmap
         (fn (tr as (psi, alpha, c, RIGHT sol, p')) =>
-            tr::( map (fn (subst, psi) =>
+            (* TODO: cia
+            * tr::
+            *)
+            ( map (fn (subst, psi) =>
                 (psi, alpha, c, RIGHT sol, Psi.subst p' subst ))) sol
           | _ => Err.undefined ())
 
