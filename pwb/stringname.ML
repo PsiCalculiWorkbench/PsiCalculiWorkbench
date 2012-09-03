@@ -18,8 +18,8 @@ end = struct
 
     fun try1 [] = NONE
       | try1 (s::ss) =
-      if distinct ("g" ^ s)
-        then SOME ("g" ^ s)
+      if distinct ("gn" ^ s)
+        then SOME ("gn" ^ s)
         else try1 ss
 
     fun try2 [] [] _ = NONE
