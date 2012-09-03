@@ -35,9 +35,6 @@ struct
   fun substC sigma psi = Err.undefined ()
   fun substA sigma phi = Err.undefined ()
 
-  fun brTransmit (m,n) = Err.undefined ()
-  fun brReceive (m,n) = Err.undefined ()
-
   (* Unsorted *)
   structure Sort = Unsorted
 
@@ -115,7 +112,6 @@ struct
   fun var n               = Err.undefined ()
   fun solve cs            = Err.undefined ()
   fun solveBisim cs       = Err.undefined ()
-  fun nameOfConstrSort () = Err.undefined ()
 end;
 
 
@@ -126,7 +122,6 @@ structure InstanceName___SymbolicInstance : SYMBOLIC_PSI = struct
   structure PsiInstance = InstanceName___PsiInstance.Inst
   structure Constraint  = InstanceName___SymbolicInstanceRequisites.Constraint
   val var               = InstanceName___SymbolicInstanceRequisites.var
-  val nameOfConstrSort  = InstanceName___SymbolicInstanceRequisites.nameOfConstrSort
 end
 
 

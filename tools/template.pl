@@ -37,12 +37,17 @@ if (not defined $instance_name) {
     exit 1;
 }
 
+if (!$ENV{PSI_WORKBENCH_HOME}) {
+    print "The environment variable PSI_WORKBENCH_HOME is not set!\n";
+    exit 1;
+}
+
 my $tmpl;
 my $template_file = $ENV{PSI_WORKBENCH_HOME} . "/tools/template.ML";
 
 if (-f $template_file) {
     local $/;
-    open my $fh, "<", "template.ML";
+    open my $fh, "<", $template_file;
     $tmpl = <$fh>;
     close $fh;
     $tmpl =~ s/InstanceName___/$instance_name/g;
