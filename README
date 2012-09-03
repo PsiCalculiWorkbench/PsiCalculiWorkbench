@@ -17,9 +17,9 @@ tested.
 Pwb expects that the environment variable PSI_WORKBENCH_HOME is set to the Pwb
 directory.
 
-You might want to put 'tools/psi' on the PATH. It is the frontend to other Pwb
-tools. To see what can be done with 'tools/psi', take a look at the output of
-'tools/psi help'.
+You might want to put 'tools/pwb' on the PATH. It is the frontend to other Pwb
+tools. To see what can be done with 'tools/pwb', take a look at the output of
+'tools/pwb help'.
 
 
 Directory content
