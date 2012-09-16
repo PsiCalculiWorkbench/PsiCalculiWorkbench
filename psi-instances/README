@@ -1,7 +1,7 @@
 
 To load a psi-calculi, execute
 
-    tools/psi load-instance <file.ML>
+    tools/pwb load-instance <file.ML>
 
 Note that the vpccs psi-calculus requires lp_solve [1] ILP solver for the simulator
 to work.
