@@ -7,6 +7,8 @@
 signature SYMBOLIC_BISIM_CONSTRAINT =
 sig
   structure Psi : PSI
+  structure Frame : FRAME
+  sharing Psi = Frame.Psi
 
   datatype constraint
     (* transition constraints *)
@@ -16,12 +18,12 @@ sig
     (* constraints *)
     | TermEq of Psi.Inst.term  * Psi.Inst.term
     | FreshP of Psi.Inst.name  * Psi.psi
-    (* TODO: a bug, this must be frames *)
-    | StImp  of Psi.Inst.assertion * Psi.Inst.assertion
+    | StImp  of Frame.frame * Frame.frame
 
     | Conj   of constraint * constraint
     | Disj   of constraint * constraint
     | Imp    of constraint * constraint
+    | Forall of Psi.Inst.name * constraint
 
   include NOMINAL
     where type atom = Psi.Inst.name
@@ -67,20 +69,22 @@ end;
 
 functor SymBisimConstraint(Psi: PSI) : SYMBOLIC_BISIM_CONSTRAINT =
 struct
+  structure Psi = Psi
+  structure Frame = Frame(Psi)
+
   datatype constraint
     (* transition constraints *)
     = True
     | False
     | Atomic of Psi.Inst.name list * Psi.Inst.assertion * Psi.Inst.condition
     | Conj   of constraint * constraint
-    (* constraints *)
     | TermEq of Psi.Inst.term * Psi.Inst.term
     | FreshP of Psi.Inst.name * Psi.psi
     | Disj   of constraint    * constraint
     | Imp    of constraint    * constraint
-    | StImp  of Psi.Inst.assertion * Psi.Inst.assertion
+    | StImp  of Frame.frame * Frame.frame
+    | Forall of Psi.Inst.name * constraint
 
-  structure Psi = Psi
 
   open Psi
   open Inst
@@ -102,11 +106,11 @@ struct
         Atomic (L.swap (a,b) avec, Assr.swap (a,b) psi, Cond.swap (a,b) phi)
       | swap (a,b) (Conj (c,c'))    = Conj (swap (a,b) c, swap (a,b) c')
       | swap (a,b) (TermEq (n,m))   = TermEq (Term.swap (a,b) n, Term.swap (a,b) m)
-      (* TODO: Should swapping effect freshness constraints? *)
-      | swap (a,b) (FreshP (x,p))   = FreshP (x, Psi.swap (a,b) p)
+      | swap (a,b) (FreshP (x,p))   = FreshP (Term.swapAtom (a,b) x, Psi.swap (a,b) p)
       | swap (a,b) (Disj (c,c'))    = Disj (swap (a,b) c, swap (a,b) c')
       | swap (a,b) (Imp (c,c'))     = Imp (swap (a,b) c, swap (a,b) c')
-      | swap (a,b) (StImp (f,g))    = StImp (Assr.swap (a,b) f, Assr.swap (a,b) g)
+      | swap (a,b) (StImp (f,g))    = StImp (Frame.swap (a,b) f, Frame.swap (a,b) g)
+      | swap (a,b) (Forall (x,c))   = Forall (Term.swapAtom (a,b) x, swap (a,b) c)
 
     fun support True = []
       | support False = []
@@ -114,11 +118,11 @@ struct
         Lst.minus ((Assr.support psi) @ (Cond.support phi)) avec
       | support (Conj (c,c'))    = support c @ support c'
       | support (TermEq (n,m))   = Term.support n @ Term.support m
-      (* TODO: what is support of this? *)
-      | support (FreshP (a,p))   = Psi.support p
+      | support (FreshP (a,p))   = a :: (Psi.support p)
       | support (Disj (c,c'))    = support c @ support c'
       | support (Imp (c,c'))     = support c @ support c'
-      | support (StImp (f,g))    = Assr.support f @ Assr.support g
+      | support (StImp (f,g))    = Frame.support f @ Frame.support g
+      | support (Forall (x,c))   = Lst.minus (support c) [x]
 
     val new = Term.new
     val newBasedOn = Term.newBasedOn
@@ -135,13 +139,16 @@ struct
       | eq aEq (Imp  (c1,c1'), Imp  (c2,c2')) = eq aEq (c1, c2) andalso eq aEq (c1',c2')
       | eq aEq (TermEq (n,m), TermEq(n',m')) = Term.eqData (n,n') andalso Term.eqData (m,m')
       | eq aEq (FreshP (a,p), FreshP (a',p')) = a = a' andalso Psi.eqData (p,p')
-      | eq aEq (StImp (f,g), StImp (f',g')) = Assr.eqData (f,f') andalso Assr.eqData (g,g')
+      | eq aEq (StImp (f,g), StImp (f',g')) = Frame.eqData (f,f') andalso Frame.eqData (g,g')
       | eq _ _ = false
   end)
   open Nom
 
   structure NA = NominalAlpha(Nom)
   local open Missing in
+
+  fun substSupp sigma =
+    (map fst sigma) @ (List.concat $ map (Term.support o snd) sigma)
 
   fun subst True sigma             = True
     | subst False sigma            = False
@@ -150,21 +157,27 @@ struct
     | subst (Imp  (c,c')) sigma    = Imp  (subst c sigma, subst c' sigma)
     | subst (TermEq (n,m)) sigma   = TermEq (substT sigma n, substT sigma m)
     | subst (FreshP (a,p)) sigma   = FreshP (a, Psi.subst p sigma)
-    | subst (StImp (f,g)) sigma    = StImp (substA sigma f, substA sigma g)
+    | subst (StImp (f,g)) sigma    = StImp (Frame.subst sigma f, Frame.subst sigma g)
     | subst (Atomic (avec, psi, phi)) sigma =
         (* avec # sigma *)
         let
-          val sigmaNames = (map Tpl.fst sigma) @
-                           (List.concat (map (Term.support o Tpl.snd) sigma))
+          val sigmaNames = substSupp sigma
         in
           (NA.makeFresh avec (Atomic (avec, psi, phi)) sigmaNames) |>
           (fn (Atomic (avec, psi, phi)) =>
             Atomic (avec, substA sigma psi, substC sigma phi)
             | _ => Err.undefined ())
         end
+    | subst (Forall (x,c)) sigma =
+        (let
+          val x' = Term.newBasedOn x (substSupp sigma)
+        in
+          Forall (x', subst (Nom.swap (x,x') c) sigma)
+        end)
   end
 
 
+  local open Missing in
 
   fun applyRule [] t = NONE
     | applyRule (r::rs) t =
@@ -190,6 +203,7 @@ struct
          Imp c  => rbin rules rw Imp  c
        | Conj c => rbin rules rw Conj c
        | Disj c => rbin rules rw Disj c
+       | Forall (x,c) => rewrite' rules c |> (fn (c',rw) => (Forall (x, c'), rw))
        | c      => (c,rw)
   end
 
@@ -199,6 +213,10 @@ struct
   in
     if rw then rewrite rules c else c
   end
+
+
+  end (* local open Missing *)
+
 
   fun listOfDisjuncts (Disj (c,c')) = listOfDisjuncts c @ listOfDisjuncts c'
     | listOfDisjuncts c = [c]
@@ -328,26 +346,23 @@ struct
     []
 
 
-  fun cnf c =
-  let
-    val c = simplify c
-    val c = rewrite elimImpRules c
-    val c = rewrite deMorganAndNegRules c
-    val c = rewrite disjRules c
-    val c = simplify c
-  in
-    c
-  end
+  local open Missing in
 
-  fun dnf c =
-  let
-    val c = simplify c
-    val c = rewrite elimImpRules c
-    val c = rewrite deMorganAndNegRules c
-    val c = rewrite conjRules c
-    val c = simplify c
-  in
-    c
+  fun cnf c = c
+    |> simplify
+    |> rewrite elimImpRules
+    |> rewrite deMorganAndNegRules
+    |> rewrite disjRules
+    |> simplify
+
+  fun dnf c = c
+    |> simplify
+    |> rewrite elimImpRules
+    |> rewrite deMorganAndNegRules
+    |> rewrite conjRules
+    |> simplify
+
+
   end
 
   fun reduce f base []      = base
@@ -385,10 +400,10 @@ struct
 
   structure Psi = WSim.Sim.Psi
   structure TC  = WSim.Tr.Constraint
-  structure F   = Frame(Psi)
   structure R   = StrongSymbolicTransitionResidual(WSim.Sim.Tr)
   structure RA  = NominalAlpha(R)
   structure L   = NominalNameList(Psi.Inst.Term)
+  structure F   = C.Frame
 
   open C
 
@@ -397,7 +412,6 @@ struct
 
   fun unvar x = hd $ Psi.Inst.Term.support x
 
-  fun framePsi p = F.f p |> F.assertion
 
   val emptyT        = []
   fun joinT (w,w')  = w @ w'
@@ -467,7 +481,7 @@ struct
         (fn (cqi, qi) =>
             let val (ci, ti) = close (p,qi) (c </Conj/> cqi) ((p,q)::w)
             in (cqi </Conj/> ci </Conj/>
-                ((ci </Conj/> cqi) </Imp/> StImp (framePsi p, framePsi qi)),
+                ((ci </Conj/> cqi) </Imp/> StImp (F.f p, F.f qi)),
                 ti)
             end) qtr
   in
@@ -528,7 +542,7 @@ struct
             let
               val (cij,tij) =
                 close (pi,qj)
-                      (c </Conj/> cpi </Conj/>
+                      (c </Conj/> cpi </Conj/> cqj </Conj/>
                       (n </TermEq/> n') </Conj/>
                       freshness avec p </Conj/> freshness avec q)
                       ((p,q)::w)
@@ -536,8 +550,8 @@ struct
               (cpi </Conj/> (n </TermEq/> n') </Conj/> cij, tij)
             end ) qtr
         in
-          ((cpi </Conj/> freshness avec p </Conj/> freshness avec q)
-            </Imp/> disjunct civec,
+          (Forall (y, (cpi </Conj/> freshness avec p </Conj/> freshness avec q)
+            </Imp/> disjunct civec),
             unionT tivec)
         end) ptr
   in
@@ -575,7 +589,7 @@ struct
                       ((p,q)::w)
             in (cqj </Conj/> cij, tij) end) qtr)
         in
-          (cpi </Imp/> disjunct civec, unionT tivec)
+          (Forall (y, cpi </Imp/> disjunct civec), unionT tivec)
         end) ptr)
   in
     (conjunct cvec, unionT tvec)
@@ -595,7 +609,7 @@ struct
         val (c_in, t_in)         = matchIn (p,q) c w
         val (c'_in, t'_in)       = matchIn (q,p) c w
       in
-        (c_stimp </Conj/> c'_stimp </Conj/>
+        (c </Conj/> c_stimp </Conj/> c'_stimp </Conj/>
          c_tau </Conj/> c'_tau </Conj/>
          c_out </Conj/> c'_out </Conj/>
          c_in </Conj/> c'_in

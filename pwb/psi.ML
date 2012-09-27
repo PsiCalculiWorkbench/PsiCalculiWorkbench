@@ -93,7 +93,7 @@ signature FRAME =
 sig
   structure Psi: PSI
 
-  type frame
+  datatype frame = Frame of Psi.Inst.name list * Psi.Inst.assertion
 
   (* compute the frame of a psi agent *)
   val f          : Psi.psi -> frame
@@ -102,6 +102,8 @@ sig
 
   val assertion  : frame -> Psi.Inst.assertion
   val binders    : frame -> Psi.Inst.name list
+
+  val subst      : (Psi.Inst.name * Psi.Inst.term) list -> frame -> frame
 
   include NOMINAL
   sharing AtomSort = Psi.AtomSort
@@ -174,6 +176,17 @@ struct
     | f (Restriction (ns, p)) = extend_names [ns] (f p)
     | f (Nil)                 = unit_frame
     | f (Invocation _)        = unit_frame
+
+
+  local open Missing in
+  fun subst sigma (f as Frame (avec, psi)) =
+  let
+    val sn = (map fst sigma) @ (Lst.flatmap (P.Inst.Term.support o snd) sigma)
+    val Frame (avec, psi) = FrameAlpha.makeFresh avec f sn
+  in
+    Frame (avec, P.Inst.substA sigma psi)
+  end
+  end
 
 end;
 end;

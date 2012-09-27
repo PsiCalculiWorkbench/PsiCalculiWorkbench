@@ -79,6 +79,8 @@ struct
 
   fun getWidth _ = 80
 
+  val simplBisim = ref true;
+
   datatype command_state = CommandState of
      { env         : Env.env
      , eof         : bool
@@ -242,6 +244,13 @@ struct
   fun breakableSp ctx (a,b) = a </join/> nest 2 (line </join/> b)
 
   local open Bisim.C in
+  fun ppFrame ctx (SBCS.Constraint.Frame.Frame (avec, psi)) =
+    (if null avec
+        then empty
+        else text "(new " </join/> (commaSep (map PsiPP.n avec)) </join/> text ")")
+        </join/>
+        text "(|" </sp/> PsiPP.a psi </sp/> text "|)"
+
   fun ppBisimConstraint ctx True = text "true"
     | ppBisimConstraint ctx False = text "false"
     | ppBisimConstraint ctx (Atomic a) = ppAtomicConstraint ctx a
@@ -261,8 +270,11 @@ struct
         ppCbrackets ctx $ PsiPP.t n </sp/> text "=" </sp/> PsiPP.t m
     | ppBisimConstraint ctx (FreshP (a,p)) =
         ppCbrackets ctx $ PsiPP.n a </sp/> text "#" </sp/> ppAgent ctx p
-    | ppBisimConstraint ctx (StImp (psi,psi')) =
-        ppCbrackets ctx $ PsiPP.a psi </sp/> text "<=" </sp/> PsiPP.a psi'
+    | ppBisimConstraint ctx (StImp (f,g)) =
+        ppCbrackets ctx $ ppFrame ctx f </sp/> text "<=" </sp/> ppFrame ctx g
+    | ppBisimConstraint ctx (Forall (x,c)) =
+        text "forall " </sp/> PsiPP.n x </join/> text "." </breakableSp ctx/>
+            ppBisimConstraint ctx c
   end
 
   fun ppBisimDisjList ctx l =
@@ -707,13 +719,14 @@ struct
               map (fn (pq,c) => (pq, Bisim.C.cnf c)) (Tpl.snd sb))
     val ll = cnfToList (Tpl.fst sb)
     *)
+
     val res = SBCS.solve (fn s => fn c =>
                 outputPP ctx $ PP.line </PP.join/>
                 PP.text ("Debug: " ^ s)  </PP.join/> PP.nest 4
                 (PP.line </PP.join/> ppBisimConstraint ctx c) </PP.join/> PP.line)
         (Tpl.fst b)
   in
-    ( outputPP ctx $ ppBisim ctx sb ;
+    ( outputPP ctx $ ppBisim ctx (if (!simplBisim) then sb else b)  ;
      (* ; outputPP ctx $ ppBisimCNFList ctx ll *)
       (*outputPP ctx $ PP.text ("Number of /\\ is " ^ (Int.toString $ length ll))
       ; *)
@@ -743,6 +756,9 @@ struct
     ((t "copyright" >> tr ()) >>= (fn _ =>
         (output ctx Copyright.copyright ; return ctx)))
 
+  fun toggleSimpC ctx =
+    ((t "toggleSimp" >> tr ()) >>= (fn _ => ((simplBisim := not (!simplBisim)); return ctx)))
+
 
   fun exitC ctx =
     ((t "exit" >> tr () >> return ctx)
@@ -765,6 +781,7 @@ struct
     bisimC         ::
     warrantyC      ::
     copyrightC     ::
+    toggleSimpC    ::
     []
 
   and statement (ctx : command_state) =
