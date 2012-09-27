@@ -711,7 +711,7 @@ struct
 
   fun checkBisim ctx (p,q) =
   let
-    val b = Bisim.bisim (p,q)
+    val b = Bisim.bisim (getEnv ctx) (p,q)
     val sb = (Bisim.C.simplify (Tpl.fst b),
               map (fn (pq,c) => (pq, Bisim.C.simplify c)) (Tpl.snd b))
     (*
