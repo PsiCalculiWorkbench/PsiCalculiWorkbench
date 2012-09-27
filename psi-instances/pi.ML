@@ -190,6 +190,10 @@ struct
                     (if x = a then [(x,b)] else
                      if x = b then [(x,a)] else [])
                 else []
+            | findE (TermEq (a,b)) =
+                if x = a then [(x,b)]
+                else if x = b then [(x,a)]
+                else []
             | findE (Conj (c,c')) = findE c @ findE c'
             | findE (Disj (c,c')) = findE c @ findE c'
             | findE (Imp  (c,c')) = findE c @ findE c'
