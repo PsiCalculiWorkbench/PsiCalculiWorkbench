@@ -134,9 +134,13 @@ in
 
   fun parseLiteral p = literal >>= Either.either Parser.error return o p
   val name = parseLiteral parseName
+    </choice/> error "Name was expected"
   val assr = parseLiteral parseAssr
+    </choice/> error "Assertion was expected"
   val cond = parseLiteral parseCond
+    </choice/> error "Condition was expected"
   val term = parseLiteral parseTerm
+    </choice/> error "Term was expected"
 
 
   fun tok p = ws >> p >>= (fn x => ws >> return x)
@@ -178,7 +182,8 @@ in
     ))
 
   and output () =
-                t "'" >> term >>=
+                t "'" >> nofail $
+                term >>=
     (fn m =>    t "<" >> term >>=
     (fn n =>    t ">" >>
                 return (fn p => Output (m, n, p))))
@@ -199,13 +204,14 @@ in
     ))
 
   and caseAgent () =
-                t "case" >>
+                t "case" >> nofail $
                 caseClause () </sepby1/> (t "[]") >>=
     (fn cs =>   return (Case cs)
     )
 
   and restriction () =
-                t "(" >> t "new" >> (name </sepby1/> (t ",")) >>=
+                t "(" >> t "new" >> nofail $
+                    (name </sepby1/> (t ",")) >>=
     (fn ns =>   t ")" >>
                 delayed (restrictedAgent ["parallel"]) >>=
     (fn a =>    return (List.foldr Restriction a ns)

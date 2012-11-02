@@ -157,8 +157,14 @@ struct
 
   (* fun seof (s,p) = TextIO.StreamIO.endOfStream s *)
 
-  fun parserFailMsg (Fail m) = m
-    | parserFailMsg (Error m) = m
+  fun streamPosStr s =
+  let
+    val (ln,cn,_) = ParserStreamIO.pos s
+  in
+    Int.toString ln ^ ":" ^ Int.toString cn
+  end
+  fun parserFailMsg (Fail m) s = streamPosStr s ^ ": " ^ m
+    | parserFailMsg (Error m) s = streamPosStr s ^ ": " ^ m
 
   fun interactiveStatements ctx prompt statement stEnd stream =
   let
@@ -166,6 +172,7 @@ struct
       interactiveStatements ctx prompt statement stEnd stream
     val st = statement ctx
     val _  = (print prompt; print " ")
+    val stream = ParserStreamIO.resetPos stream
     val (c,s) =
       (case parse st stream of
          RIGHT [(ctx,s)] =>
@@ -173,7 +180,7 @@ struct
                 then (ctx,s)
                 else (interact ctx s)
        | LEFT [(msg,s)] => (
-            print "Error: "; print (parserFailMsg msg); print "\n";
+            print "Syntax Error: "; print (parserFailMsg msg s); print "\n";
             interact ctx (discard s) )
        | _ => Err.undefined ())
 
@@ -808,7 +815,7 @@ struct
     (fn n =>    ws >> tr () >>=
     (fn _ =>    case (inputFile ctx n) of
                        RIGHT ((ctx,s)::_) => return ctx
-                     | LEFT ((err,s)::_)  => error (parserFailMsg err)
+                     | LEFT ((err,s)::_)  => error (parserFailMsg err s)
                      | RIGHT _ => Err.undefined ()
                      | LEFT _ => Err.undefined ()
     ))

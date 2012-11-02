@@ -13,6 +13,7 @@ sig
 
   (* line nr, column nr, character nr *)
   val pos  : stream -> int * int * int
+  val resetPos : stream -> stream
 
   type base_stream
   val make : base_stream -> stream
@@ -107,7 +108,7 @@ struct
     case parse p s of
          LEFT ((Fail e, s)::_) => LEFT [(Error e, s)]
        | LEFT ((Error e, s)::_) => LEFT [(Error e, s)]
-       | LEFT _ => Err.undefined ()
+       | LEFT _ => Err.error "Undefined case in Parser.nofail"
        | RIGHT r => RIGHT r)
 
   fun p >>= f  = Parser (fn s =>
@@ -148,11 +149,12 @@ struct
     let
       val pres = (parse p) s
       fun qres () = (parse q) s
-      fun findError l = List.find (fn (Error _,_) => true | _ => false) l
+      fun findError l = List.find (fn (Error _,_) => true
+                                    | _ => false) l
     in
       case pres of
            RIGHT (r::_) => RIGHT [r]
-         | RIGHT [] => Err.undefined ()
+         | RIGHT [] => Err.error "Undefined case in Parser.choice"
          | LEFT fs => case findError fs of
                            NONE => qres ()
                          | SOME err => LEFT [err]
@@ -311,11 +313,11 @@ struct
         SOME (ch, (s, (l,c,i+1)))
       end
 
+  fun make s = (s, (1,1,0))
   fun pos (_, p) = p
+  fun resetPos (s,_) = make s
 
   type base_stream = string
-
-  fun make s = (s, (1,1,0))
 
   fun isReady _ = true
   fun isEnd (s, (_,_,i)) = String.size s = i
@@ -331,11 +333,13 @@ struct
   type base_stream = TextIO.instream
 
 
+  val initPos = (1,1,0)
+
   fun make bs =
   let
     val (rd, buf) = TextIO.StreamIO.getReader $ TextIO.getInstream bs
   in
-    ((TextIO.StreamIO.mkInstream (rd, "")), (0,0,0))
+    ((TextIO.StreamIO.mkInstream (rd, "")), initPos)
   end
 
   fun head (s, (line,col,chr)) =
@@ -349,6 +353,7 @@ struct
 
 
   fun pos (_,p) = p
+  fun resetPos (s,_) = (s,initPos)
 
   fun isReady (s,_) =
     maybe false (const true) (TextIO.StreamIO.canInput (s,1))
