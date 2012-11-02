@@ -154,7 +154,7 @@ in
   and inputSubj () = ws >> term
 
   and inputObjFull () =
-                t "(" >> t "\\" >>
+                t "(" >> t "\\" >> nofail $
                 name </sepby1/> (t ",") >>=
     (fn xvec => t ")" >>
                 term >>=
@@ -164,7 +164,8 @@ in
   and inputObjAbr () =
                 t "(" >>
                 name >>=
-    (fn x =>    t ")" >>
+    (fn x =>    nofail $
+                t ")" >>
                 return x >>=
     (fn x =>    case A.Req.var of
                      NONE => Parser.error
@@ -192,13 +193,13 @@ in
   and prefix' () = output () </choice/> input ()
   and prefix  () =
                 prefix' () >>=
-    (fn p =>    ((t "." >>
+    (fn p =>    ((t "." >> nofail $
                 (delayed $ restrictedAgent ["parallel"])) </choice/> return Nil)  >>=
                 return o p)
 
   and caseClause () =
                 cond >>=
-    (fn cond => t ":" >>
+    (fn cond => t ":" >> nofail $
                 delayed (restrictedAgent []) >>=
     (fn p =>    return (cond, p)
     ))
@@ -218,14 +219,16 @@ in
     ))
 
   and replication () =
-                t "!" >> delayed (restrictedAgent ["replication", "parallel"]) >>=
+                t "!" >> nofail $ delayed (restrictedAgent ["replication", "parallel"]) >>=
                 return o Replication
 
-  and par () =  (delayed $ restrictedAgent ["parallel"])
-    </rightAssocOp1/> (t "|" >> return Parallel)
+  and par () =
+        (delayed $ restrictedAgent ["parallel"])
+    </rightAssocOp1/>
+        (t "|" >> return Parallel)
 
   and assertion () =
-                t "(|" >>
+                t "(|" >> nofail $
                 assr >>=
     (fn psi =>  t "|)" >>
                 return (Assertion psi)
@@ -234,13 +237,14 @@ in
   and parens () =
                 t "(" >>
                 delayed agent >>=
-    (fn a =>    t ")" >>
+    (fn a =>    nofail $
+                t ")" >>
                 return a
     )
 
   and invocation () =
                 processConstant () >>=
-    (fn a =>    t "<" >>
+    (fn a =>    t "<" >> nofail $
                 (term </sepby/> (t ",")) >>=
     (fn mvec => t ">" >>
                 return (Invocation (a, mvec))
@@ -261,7 +265,7 @@ in
 
 
   and restrictedAgent l () =
-    List.foldr choice zero $
+    List.foldr choice (error "Agent expected") $
         map snd $
             (filter (not o (flip member) l o fst) $ agentProds ())
 

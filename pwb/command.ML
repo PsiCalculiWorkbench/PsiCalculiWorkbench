@@ -805,7 +805,7 @@ struct
         else error "-- End of input unexpected"
 
     fun script ctx =    (eof ctx)
-        </choice/>      (statement ctx >>= script)
+        </choice/>      (statement ctx >>= (fn c => nofail $ script c))
   in
     parse (script ctx) s
   end
