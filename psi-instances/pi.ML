@@ -143,13 +143,16 @@ struct
       (* struct type atom = name val new = new end) *)
 
   fun mgu [] sigma = Either.RIGHT sigma                (*@ $\Box$ @*)
-    | mgu ((avec, Unit,  T )::cs) sigma =              (*@ (\textsc{Tr2}) @*)
+    | mgu ((avec, Unit,  T::phis )::cs) sigma =        (*@ (\textsc{Tr2}) @*)
+      mgu ((avec, Unit,  phis )::cs) sigma
+    | mgu ((avec, Unit,  [] )::cs) sigma =             (*@ (\textsc{Tr2}') @*)
       mgu cs sigma
-    | mgu ((avec, Unit, (Eq (a,b)))::cs) sigma =
-      if a = b then mgu cs sigma                       (*@ (\textsc{Tr1}) @*)
+    | mgu ((avec, Unit, (Eq (a,b))::phis)::cs) sigma =
+      if a = b                                         (*@ (\textsc{Tr1}) @*)
+      then mgu ((avec, Unit, phis)::cs) sigma
       else
         if L.fresh a avec andalso L.fresh b avec       (*@ (\textsc{Elim})@*)
-            then mgu (Constraint.subst cs [(b,a)])
+            then mgu (Constraint.subst [(b,a)] ((avec, Unit, phis)::cs))
                      (composeSubst sigma (b,a))
             else Either.LEFT [Eq (a,b)]                (*@ $\blacksquare$ @*)
     | mgu _ _ = Err.undefined ()

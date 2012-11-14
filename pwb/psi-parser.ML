@@ -157,13 +157,13 @@ in
                 t "(" >> t "\\" >> nofail $
                 name </sepby1/> (t ",") >>=
     (fn xvec => t ")" >>
-                term >>=
+                term </sepby1/> (t ",") >>=
     (fn n    => return (xvec, n)))
 
 
   and inputObjAbr () =
                 t "(" >>
-                name >>=
+                name </sepby1/> (t ",") >>=
     (fn x =>    nofail $
                 t ")" >>
                 return x >>=
@@ -171,23 +171,23 @@ in
                      NONE => Parser.error
                         ("Abbreviated form of Input is not supported" ^
                          " by the instance!")
-                   | SOME v => return ([x], v x)
+                   | SOME v => return (x, List.map v x)
     ))
 
   and inputObj () = inputObjFull () </choice/> inputObjAbr ()
 
   and input () =
-                        inputSubj () >>=
-    (fn m =>            inputObj  () >>=
-    (fn (xvec, n) =>    return (fn p => Input (m, xvec, n, p))
+                           inputSubj () >>=
+    (fn m =>               inputObj  () >>=
+    (fn (xvec, nvec) =>    return (fn p => Input (m, xvec, nvec, p))
     ))
 
   and output () =
                 t "'" >> nofail $
                 term >>=
-    (fn m =>    t "<" >> term >>=
-    (fn n =>    t ">" >>
-                return (fn p => Output (m, n, p))))
+    (fn m =>    t "<" >> term </sepby1/> (t ",") >>=
+    (fn nvec => t ">" >>
+                return (fn p => Output (m, nvec, p))))
 
 
   and prefix' () = output () </choice/> input ()

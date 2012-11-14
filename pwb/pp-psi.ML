@@ -120,9 +120,9 @@ in
   fun enclose a doc b =
     text a </join/> doc </join/> text b
 
-  fun isSingleInput (Input (_, [x], x', _)) =
-    maybe false (fn v => Psi.Inst.Term.eqData (v x, x')) var
-    | isSingleInput _ = false
+  fun isTupleInput (Input (_, xs, xs', _)) =
+    maybe false (fn v => Lst.all Psi.Inst.Term.eqData (Lst.zip (List.map v xs) xs')) var
+    | isTupleInput _ = false
 
 
   fun dot (a,p) =
@@ -133,17 +133,17 @@ in
                     nestIndent (line </join/> (print' p)))
 
   and print' Nil = text "0"
-    | print' (Output (m, n, p)) =
+    | print' (Output (m, ns, p)) =
         group $
         text "'" </join/> t m </join/>
-            (enclose "<" (t n) ">") </dot/> p
+            (enclose "<" (commaSep (map t ns)) ">") </dot/> p
     | print' (inp as Input (m, xvec, nn, p)) =
         group $
         t m  </join/>
-            (if isSingleInput inp
+            (if isTupleInput inp
                 then enclose "(" (commaSep (map n xvec)) ")"
                 else enclose "(\\" (commaSep (map n xvec)) ")"
-                </join/> t nn )
+                </join/> (commaSep (map t nn)) )
                 </dot/> p
     | print' (Case cs) =
         let

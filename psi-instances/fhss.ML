@@ -137,25 +137,26 @@ struct
 
   structure L = NominalNameList(FHSSInstanceRequisites.Term)
 
+  fun explode (avec,psi,phis) = map (fn phi => (avec, psi, [phi])) phis
 
   fun freshL avec bvec =
     List.all (fn b => L.fresh b avec) bvec
 
   fun mgu [] sigma = Either.RIGHT sigma
       (* (*@  \textsc{(TrT)} case @*) *)
-    | mgu ((avec, Unit,  True )::cs) sigma =
+    | mgu ((avec, Unit,  [True] )::cs) sigma =
       mgu cs sigma
       (* (*@  \textsc{(Decom)} case @*) *)
-    | mgu ((avec, Unit, (Eq (NextFreq a, NextFreq b)))::cs)
+    | mgu ((avec, Unit, [Eq (NextFreq a, NextFreq b)])::cs)
           sigma =
-        mgu ((avec, Unit, (Eq (a,b)))::cs) sigma
+        mgu ((avec, Unit, [Eq (a,b)])::cs) sigma
       (* (*@  \textsc{(Swap)} case @*) *)
-    | mgu ((avec, Unit, (Eq (NextFreq a, Name b)))::cs)
+    | mgu ((avec, Unit, [Eq (NextFreq a, Name b)])::cs)
           sigma =
-        mgu ((avec, Unit, (Eq (Name b, NextFreq a)))::cs)
+        mgu ((avec, Unit, [Eq (Name b, NextFreq a)])::cs)
             sigma
       (* (*@  If the name is on the left hand side of the channel equivalence @*) *)
-    | mgu ((avec, Unit, (Eq (Name a, n)))::cs) sigma =
+    | mgu ((avec, Unit, [Eq (Name a, n)])::cs) sigma =
        if Name a = n then mgu cs sigma (* (*@  \textsc{(TrN)} case @*) *)
          else
            (* (*@ if $a\freshin\ve{a} \;\land\; \ve{a}\freshin N \;\land\; a\freshin N $ @*) *)
@@ -166,13 +167,14 @@ struct
                 (* compose the produced substitution
                  * sequence with the accumulated and
                  * apply it to the residual *)
-               mgu (Constraint.subst cs [(a, n)])
+               mgu (Constraint.subst [(a, n)] cs)
                    (composeSubst sigma (a, n))
              else (* otherwise (*@ \textsc{(Fail)} @*) *)
                Either.LEFT [(Eq (Name a, n))]
+    | mgu _ _ = Err.error "explode failed in fhss.ML"
 
   fun solve cs =
-    case mgu cs [] of
+    case mgu (Lst.flatmapmix explode cs) [] of
          Either.RIGHT sigma => Either.RIGHT [(sigma, Unit)]
        | Either.LEFT phi    => Either.LEFT  [phi]
 

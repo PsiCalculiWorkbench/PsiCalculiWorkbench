@@ -114,6 +114,7 @@ end;
 
 structure Lst :
 sig
+  val empty        : 'a list -> bool
   val foldr        : ('a -> 'b -> 'b) -> 'b -> 'a list -> 'b
   val foldl        : ('a -> 'b -> 'b) -> 'b -> 'a list -> 'b
   val flatmap      : ('a -> 'b list) -> 'a list -> 'b list
@@ -132,6 +133,7 @@ sig
   val filter       : ('a -> bool) -> 'a list -> 'a list
   val sngl         : 'a -> 'a list
   val zip          : 'a list -> 'b list -> ('a * 'b) list
+  val zipwith      : ('a * 'b -> 'c) -> 'a list -> 'b list -> 'c list
   val intersperse  : 'a -> 'a list -> 'a list
   val enum         : int -> int -> int list
   val power        : 'a list -> 'a list list
@@ -142,6 +144,9 @@ sig
 end = struct
   open List
   open Err
+
+  fun empty [] = true
+    | empty _ = false
 
   (* uncurried versions *)
   fun foldr f i l = List.foldr (Tpl.uncurry f) i l
@@ -178,6 +183,8 @@ end = struct
   fun sngl a = [a]
 
   fun zip a b = ListPair.zip (a,b)
+
+  fun zipwith f a b = List.map f $ zip a b
 
   fun intersperse s []           = []
     | intersperse s [x]          = [x]

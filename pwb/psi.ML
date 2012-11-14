@@ -42,8 +42,8 @@ sig
 
   val isWellFormedOutSubj : term -> (string, string) Either.either
   val isWellFormedInSubj  : term -> (string, string) Either.either
-  val isWellFormedInvArg  : term -> (string, string) Either.either
-  val isWellFormedOutObj  : term -> (string, string) Either.either
+  val isWellFormedInvArg  : term list -> (string, string) Either.either
+  val isWellFormedOutObj  : term list -> (string, string) Either.either
   val isWellFormedCond    : condition -> (string, string) Either.either
   val isWellFormedAssr    : assertion -> (string, string) Either.either
 end;
@@ -59,10 +59,10 @@ sig
 
   datatype psi
     = Nil
-    (* Output (m, n, p) == 'M<N>.P  *)
-    | Output      of Inst.term * Inst.term * psi
-    (* Input (m, xvec, n, p) == M(\xvec)N.P *)
-    | Input       of Inst.term * (Inst.name list) * Inst.term * psi
+    (* Output (m, n, p) == 'M<Nvec>.P  *)
+    | Output      of Inst.term * (Inst.term list) * psi
+    (* Input (m, xvec, n, p) == M(\xvec)Nvec.P *)
+    | Input       of Inst.term * (Inst.name list) * (Inst.term list) * psi
     | Case        of (Inst.condition * psi) list
     | Restriction of Inst.name * psi
     | Parallel    of psi * psi
@@ -225,6 +225,7 @@ struct
   val swapAtom = P.Inst.Term.swapAtom
   val new = P.Inst.Term.new
   val newBasedOn = P.Inst.Term.newBasedOn
+  val newsBasedOn = P.Inst.Term.newsBasedOn
 
   fun eqData _ = Err.error "TODO: define alpha equivalence for clauses"
 
@@ -285,9 +286,9 @@ struct
   datatype psi
     = Nil
     (* Output (m, n, p) == 'M<N>.P  *)
-    | Output      of term * term * psi
+    | Output      of term * (term list) * psi
     (* Input (m, xvec, n, p) == M(\xvec)N.P *)
-    | Input       of term * (name list) * term * psi
+    | Input       of term * (name list) * (term list) * psi
     | Case        of (condition * psi) list
     | Restriction of name * psi
     | Parallel    of psi * psi
@@ -322,14 +323,16 @@ struct
 
     val new        = I.Term.new
     val newBasedOn = I.Term.newBasedOn
+    val newsBasedOn = I.Term.newsBasedOn
 
     structure L = NominalNameList(I.Term)
+    structure TL = NominalList(I.Term)
 
     fun swap _  Nil = Nil
-      | swap ab (Output (m, n, p)) =
-          Output (swapT ab m, swapT ab n, swap ab p)
-      | swap ab (Input (m, xvec, n, p)) =
-          Input (swapT ab m, L.swap ab xvec, swapT ab n, swap ab p)
+      | swap ab (Output (m, nvec , p)) =
+          Output (swapT ab m, TL.swap ab nvec, swap ab p)
+      | swap ab (Input (m, xvec, nvec, p)) =
+          Input (swapT ab m, L.swap ab xvec, TL.swap ab nvec, swap ab p)
       | swap ab (Case cases) =
           Case (map (fn (c, p) => (swapC ab c, swap ab p)) cases)
       | swap ab (Restriction (n, p)) =
@@ -348,9 +351,9 @@ struct
 
 
     fun support Nil = []
-      | support (Output (m,n,p)) = supportT m @ supportT n @ support p
-      | support (Input (m,xvec,n,p)) =
-        supportT m @ Lst.minus (supportT n @ support p) xvec
+      | support (Output (m,nvec,p)) = supportT m @ Lst.flatmapmix supportT nvec @ support p
+      | support (Input (m,xvec,nvec,p)) =
+        supportT m @ Lst.minus (Lst.flatmapmix supportT nvec @ support p) xvec
       | support (Case cases) =
         List.concat (map (fn (phi,p) =>
                             supportC phi @ support p) cases)
@@ -363,29 +366,34 @@ struct
     structure TVec = NominalList(I.Term)
 
     fun eq alphaEq (Nil,Nil) = true
-      | eq alphaEq (Output (m,n,p), Output (m',n',p')) =
-        I.Term.eqData (m,m') andalso I.Term.eqData (n,n') andalso eq alphaEq (p,p')
-      | eq alphaEq (Input (m,xvec,n,p), Input (m',xvec',n',p')) =
-                List.length xvec = List.length xvec'
+      | eq alphaEq (Output (m,nvec,p), Output (m',nvec',p')) =
+        I.Term.eqData (m,m') 
+	andalso List.length nvec = List.length nvec' 
+	andalso Lst.all I.Term.eqData (Lst.zip nvec nvec') 
+	andalso eq alphaEq (p,p')
+      | eq alphaEq (Input (m,xvec,nvec,p), Input (m',xvec',nvec',p')) =
+        List.length xvec = List.length xvec'
+        andalso List.length nvec = List.length nvec'
         andalso I.Term.eqData(m, m')
         andalso
             (case xvec of
-                 [] => I.Term.eqData (n,n') andalso eq alphaEq (p,p')
+                 [] => Lst.all I.Term.eqData (Lst.zip nvec nvec') andalso eq alphaEq (p,p')
                | xs::xss =>
                    let
                      val permute = Lst.foldr
                      val x = newBasedOn xs
-                              $ xvec @ xvec' @ I.Term.support n
-                              @ I.Term.support n' @ support p @ support p'
+                              $ xvec @ xvec' @ TL.support nvec
+                              @ TL.support nvec' @ support p @ support p'
                      val pi  = map (Tpl.tuple x) xvec
                      val pi' = map (Tpl.tuple x) xvec'
 
-                     val n   = permute I.Term.swap n pi
-                     val n'  = permute I.Term.swap n' pi'
+                     val n   = permute TL.swap nvec pi
+                     val n'  = permute TL.swap nvec' pi'
                      val p   = permute swap p pi
                      val p'  = permute swap p' pi
                    in
-                     I.Term.eqData (n,n') andalso eq alphaEq (p,p')
+                     Lst.all I.Term.eqData (Lst.zip n n') 
+		     andalso eq alphaEq (p,p')
                    end)
       | eq alphaEq (Case cs, Case cs') =
         caseEq alphaEq cs cs'
@@ -416,8 +424,8 @@ struct
   structure PA = NominalAlpha(Nom)
 
   fun subst' _ Nil = Nil
-    | subst' s (Output (m,n,p)) =
-        Output (substT s m, substT s n, subst' s p)
+    | subst' s (Output (m,nvec,p)) =
+        Output (substT s m, map (substT s) nvec, subst' s p)
     | subst' s (Case cases) =
         Case (map (fn (cond, p) => (substC s cond, subst' s p)) cases)
     | subst' s (Parallel (p, q)) =
@@ -437,7 +445,7 @@ struct
                 Restriction (y, subst' s p)
               | _ => Err.undefined () )
         end
-    | subst' s (inp as (Input (m, xvec, n, p))) =
+    | subst' s (inp as (Input (m, xvec, nvec, p))) =
         (* xvec # yvec, tvec *)
         let
           val yvec = map Tpl.fst s
@@ -445,8 +453,8 @@ struct
           val pvec = support p
         in
           PA.makeFresh xvec inp (yvec @ tvec @ pvec) |>
-             (fn (Input (_, xvec, n, p)) =>
-               Input (substT s m, xvec, substT s n, subst' s p)
+             (fn (Input (_, xvec, nvec, p)) =>
+               Input (substT s m, xvec, map (substT s) nvec, subst' s p)
                | _ => Err.undefined ())
         end
     | subst' s (Invocation (k, mvec)) =
@@ -462,9 +470,9 @@ struct
   fun bindAll es = foldr (op>>) (returnE "OK") es
 
   fun isWellformed Nil = returnE "OK"
-    | isWellformed (p as (Output (m,n,p'))) =
+    | isWellformed (p as (Output (m,nvec,p'))) =
         (lf p $ isWellFormedOutSubj m >>
-                isWellFormedOutObj n) >> isWellformed p'
+                isWellFormedOutObj nvec) >> isWellformed p'
     | isWellformed (p as (Input (m, _, _, p'))) =
         (lf p $ isWellFormedInSubj m) >> isWellformed p'
     | isWellformed (p as (Case cnds)) =
@@ -476,7 +484,7 @@ struct
     | isWellformed (p as (Assertion psi)) =
         lf p $ isWellFormedAssr psi
     | isWellformed (p as (Invocation (_,ms))) =
-        lf p $ bindAll (map isWellFormedInvArg ms)
+        lf p $ isWellFormedInvArg ms
   end
 
   fun isSubstSeqWellformed' [] err = err

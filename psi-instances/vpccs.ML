@@ -245,8 +245,9 @@ struct
     (*| lineariseConstraint (Conjunction cs) = flatmap lineariseConstraint cs*)
     (*| lineariseConstraint (Exists _) = Err.error "Exists constraint encountered"*)
 
+  fun explode (avec,phis) = map (fn phi => (avec,phi)) phis
   fun lineariseConstraint cs =
-    map (fn (avec,psi,c) => (avec,c)) cs
+    Lst.flatmapmix (fn (avec,psi,c) => explode (avec,c)) cs
 
 
   fun expToEq (ExpAdd (a,b)) = expToEq a @ expToEq b

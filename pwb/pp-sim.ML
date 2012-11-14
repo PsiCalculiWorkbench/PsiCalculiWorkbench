@@ -35,7 +35,7 @@ struct
   fun ppAction alpha =
     case alpha of
          Act.Tau => text "tau"
-       | Act.Output (y,avec,m) =>
+       | Act.Output (y,avec,ms) =>
            t y </join/>
                     (if not (null avec)
                         then
@@ -44,8 +44,8 @@ struct
                             </join/> text ")"
                         else
                             text " ")
-                  </join/> t m
-       | Act.Input (z,x) =>
-           t z </join/> text "(" </join/> n x </join/> text ")"
+                  </join/> filledCommaSep (map t ms)
+       | Act.Input (z,xs) =>
+           t z </join/> text "(" </join/> filledCommaSep (map n xs) </join/> text ")"
 
 end;

@@ -232,7 +232,13 @@ struct
 
   fun ppCbrackets ctx doc = text "{|" </sp/> doc </sp/> text "|}"
 
-  fun ppAtomicConstraint ctx (avec, psi, phi) =
+  fun ppConds [phi] = PsiPP.c phi
+    | ppConds phis  = 
+      text "(" </join/> 
+	   (sep (text " /\\ ") $ map PsiPP.c phis)
+	   </join/> text ")"
+
+  fun ppAtomicConstraint ctx (avec, psi, phis) =
     (if null avec
         then empty
         else text "(new" </sp/>
@@ -241,7 +247,7 @@ struct
                 (if Psi.Inst.Assr.eqData (psi, Psi.Inst.unit)
                     then empty
                     else PsiPP.a psi </sp/> text "|-" </join/> text " ")
-                    </join/> PsiPP.c phi)
+                    </join/> ppConds phis)
 
   fun ppConstraint ctx c =
     sep (text " /\\ ") $ map (ppAtomicConstraint ctx) c
@@ -258,9 +264,11 @@ struct
         </join/>
         text "(|" </sp/> PsiPP.a psi </sp/> text "|)"
 
+  fun toSConstr (avec,psi,phi) = (avec,psi,[phi]) 
+
   fun ppBisimConstraint ctx True = text "true"
     | ppBisimConstraint ctx False = text "false"
-    | ppBisimConstraint ctx (Atomic a) = ppAtomicConstraint ctx a
+    | ppBisimConstraint ctx (Atomic a) = ppAtomicConstraint ctx (toSConstr a)
     | ppBisimConstraint ctx (Conj (c,c')) =
         group (ppParens ctx $
             ppBisimConstraint ctx c </sp/> text "/\\" </breakableSp ctx/>
@@ -629,14 +637,14 @@ struct
   let
     fun stransAgent (psi,alpha,c,sol,agent) = agent
 
-    val tr = reduce (getEnv ctx) Sim.Psi.Inst.unit agent
+    val tr = reduce (getEnv ctx) agent (* Sim.Psi.Inst.unit *)
     val transitions = fst $
-        List.partition (fn (_,_,_,RIGHT _,_) => true | _ => false) $
-        map (fn (psi,p,alpha,c,p') =>
-            (psi, alpha, c, SCS.solve c, p')) tr
+        List.partition (fn (_,_,RIGHT _,_) => true | _ => false) $
+        map (fn (p,alpha,c,p') =>
+            (alpha, c, SCS.solve c, p')) tr
 
     val transitions = transitions |> flatmap
-        (fn (tr as (psi, alpha, c, RIGHT sol, p')) =>
+        (fn (tr as (alpha, c, RIGHT sol, p')) =>
             (* TODO: cia
             * tr::
             *)

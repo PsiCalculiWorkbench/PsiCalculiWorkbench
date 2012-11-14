@@ -13,11 +13,11 @@ sig
 
   datatype action
     = Tau
-    | Output of Inst.term * Inst.name list * Inst.term
-    | Input  of Inst.term * Inst.name
+    | Output of Inst.term * Inst.name list * Inst.term list
+    | Input  of Inst.term * Inst.name list
 
   val subj : action -> Inst.term
-  val obj  : action -> Inst.term
+  val obj  : action -> Inst.term list
   val bn   : action -> Inst.name list
 
   include NOMINAL
@@ -33,19 +33,19 @@ struct
 
   datatype action
     = Tau
-    | Output of Inst.term * Inst.name list * Inst.term
-    | Input  of Inst.term * Inst.name
+    | Output of Inst.term * Inst.name list * Inst.term list
+    | Input  of Inst.term * Inst.name list
 
   fun subj (Output (t, _, _)) = t
     | subj (Input  (t, _))    = t
     | subj _                  = Err.undefined ()
 
-  fun obj (Output (_, _, n)) = n
+  fun obj (Output (_, _, ns)) = ns
     | obj _                   = Err.undefined ()
     (* | obj (Input  (_, x))    = x *)
 
   fun bn (Output (_, ns, _)) = ns
-    | bn (Input  (_, n))     = [n]
+    | bn (Input  (_, ns))    = ns
     | bn  Tau                = []
 
 
@@ -57,8 +57,9 @@ struct
     structure T = Inst.Term
     structure C = Inst.Cond
     structure A = Inst.Assr
-    structure L = NominalNameList(T)
 
+    structure L  = NominalNameList(T)
+    structure TL = NominalList(T)
 
     structure AtomSort = T.AtomSort
     structure DataSort = struct
@@ -66,22 +67,20 @@ struct
       fun eq _ = true
     end
 
-
     val atomSort = T.atomSort
     fun dataSort _ = DataSort.StrongAction
 
     val new = T.new
     val newBasedOn = T.newBasedOn
 
-
     fun swap _ Tau = Tau
       | swap ab (Output (subj, avec, obj)) =
-        Output (T.swap ab subj, L.swap ab avec, T.swap ab obj)
+        Output (T.swap ab subj, L.swap ab avec, TL.swap ab obj)
       | swap (a,b) (Input (subj, x)) =
-        Input (T.swap (a,b) subj, T.swapAtom (a,b) x)
+        Input (T.swap (a,b) subj, L.swap (a,b) x)
 
     fun support (Output (m, avec, n)) =
-        (T.support m) @ (Lst.minus (T.support n) avec)
+        (T.support m) @ (Lst.minus (TL.support n) avec)
       | support (Input  (m, _)) = T.support m
       | support Tau = []
 
@@ -95,15 +94,18 @@ sig
   structure Inst : PSI_INSTANCE
 
   (* Constraints used in the operational semantics *)
-  type atomic     = Inst.name list * Inst.assertion * Inst.condition
-  type constraint = atomic list (* conjuct list *)
+  type constraint = (Inst.name list * Inst.assertion * Inst.condition list) list
 
   include NOMINAL
     where type data = constraint
     where type atom = Inst.name
     sharing AtomSort = Inst.Sort
 
-  val subst : constraint -> (Inst.name * Inst.term) list -> constraint
+  val subst    : (Inst.name * Inst.term) list      -> constraint -> constraint
+  val addFrame : (Inst.name list * Inst.assertion) -> constraint -> constraint
+  val addCond  : Inst.condition                    -> constraint -> constraint
+  val abstract : Inst.name list                    -> constraint -> constraint
+  val compose  : constraint                        -> constraint -> constraint
 end;
 
 
@@ -111,9 +113,12 @@ functor SymbolicOSConstraint(I: PSI_INSTANCE): SYMBOLIC_TRANSITION_CONSTRAINT =
 struct
   structure Inst = I
   structure T = I.Term
+  structure C = I.Cond
 
-  type atomic     = Inst.name list * Inst.assertion * Inst.condition
+  type atomic = Inst.name list * Inst.assertion * Inst.condition list
   type constraint = atomic list
+
+  open Missing
 
   structure AtomicNom = Nominal(
   struct
@@ -123,16 +128,17 @@ struct
     structure AtomSort = T.AtomSort
     structure DataSort = struct datatype sort = STConstraint fun eq _ = true end
 
-    val atomSort = T.atomSort
+    val atomSort   = T.atomSort
     fun dataSort _ = DataSort.STConstraint
 
     structure L = NominalNameList(T)
+    structure CL = NominalList(C)
 
-    fun swap (a,b) (avec, psi, phi) =
-      (L.swap (a,b) avec, I.Assr.swap (a,b) psi, I.Cond.swap (a,b) phi)
+    fun swap (a,b) (avec, psi, phis) =
+      (L.swap (a,b) avec, I.Assr.swap (a,b) psi, CL.swap (a,b) phis)
 
-    fun support (avec, psi, phi) =
-      Lst.minus ((I.Assr.support psi) @ (I.Cond.support phi)) avec
+    fun support (avec, psi, phis) =
+      Lst.minus ((I.Assr.support psi) @ (CL.support phis)) avec
 
     val new = I.Term.new
     val newBasedOn = I.Term.newBasedOn
@@ -140,24 +146,44 @@ struct
     fun eq alphaEq ((avec,psi,phi), (avec',psi',phi')) = Err.undefined ()
   end)
 
-  structure ConstraintNom = NominalList(AtomicNom)
-  open ConstraintNom
   structure NA = NominalAlpha(AtomicNom)
 
-  fun x |> f = f x
+  structure ConstraintNom = NominalList(AtomicNom)
+  open ConstraintNom
 
-  fun subst' sigma (avec, psi, phi) =
+  fun subst sigma constr =
     (* avec # sigma *)
     let
-      val sigmaNames = (map Tpl.fst sigma) @
-                       (List.concat (map (I.Term.support o Tpl.snd) sigma))
+	val sigmaNames = (map Tpl.fst sigma) @
+			 (List.concat (map (I.Term.support o Tpl.snd) sigma))
+	fun freshify (avec, psi, phis) = NA.makeFresh avec (avec, psi, phis) sigmaNames
+	fun doSubst  (avec, psi, phis) = (avec, Inst.substA sigma psi, List.map (Inst.substC sigma) phis)
     in
-      (NA.makeFresh avec (avec, psi, phi) sigmaNames) |>
-      (fn (avec, psi, phi) =>
-        (avec, Inst.substA sigma psi, Inst.substC sigma phi))
+	map (doSubst o freshify) constr
     end
 
-  fun subst cnstr sigma = map (subst' sigma) cnstr
+  fun addFrame (bn, psi') constr =
+    (* avec # sigma *)
+    let
+	fun freshify    (avec, psi, phis) = NA.makeFresh avec (avec, psi, phis) bn
+	fun doAddFrame  (avec, psi, phis) = (bn@avec, Inst.compose (psi',psi), phis)
+    in
+	map (doAddFrame o freshify) constr
+    end
+      
+  fun addCond phi (c::cs) =
+    (* avec # sigma *)
+    let
+	fun freshify   (avec, psi, phis) = NA.makeFresh avec (avec, psi, phis) $ I.Cond.support phi
+	fun doAddCond  (avec, psi, phis) = (avec, psi, phi::phis)
+    in
+	((c |> freshify |> doAddCond)::cs)
+    end
+    | addCond phi [] = [([],I.unit,[phi])]
+
+  fun abstract bn constr = map (fn (avec, psi, phis) => (bn@avec, psi, phis)) constr
+
+    fun compose x y = x @ y
 end;
 
 
@@ -240,9 +266,9 @@ sig
   structure Constraint : SYMBOLIC_TRANSITION_CONSTRAINT
 
   type transition
-    = Psi.Inst.assertion
-        * Psi.psi * Act.action * Constraint.constraint * Psi.psi
+    = Psi.psi * Act.action * Constraint.constraint * Psi.psi
 
+  val addFrame : (Psi.atom list * Psi.Inst.assertion) -> transition -> transition
         (*
         * TODO: currently I do not need this
         *)
@@ -278,9 +304,9 @@ struct
   open A
 
   type transition
-    = Psi.Inst.assertion
-        * Psi.psi * Act.action * Constraint.constraint * Psi.psi
+    = Psi.psi * Act.action * Constraint.constraint * Psi.psi
 
+  fun addFrame fr (p,act,c,q) = (p,act,Constraint.addFrame fr c,q)
 end;
 
 
@@ -298,6 +324,8 @@ struct
     structure AtomSort = T.AtomSort
     structure DataSort = struct datatype sort = SSTResidual fun eq _ = true end
 
+    structure TL = NominalList(Tr.Psi.Inst.Term)
+
     val atomSort = T.atomSort
     fun dataSort _ = DataSort.SSTResidual
 
@@ -307,7 +335,7 @@ struct
       | support (alpha,p) =
       let
         val obj = case alpha of
-                       Tr.Act.Output (_,_,m) => T.support m
+                       Tr.Act.Output (_,_,ms) => TL.support ms
                      | _ => []
       in (T.support (Tr.Act.subj alpha)) @
          (Lst.minus (obj @ (Tr.Psi.support p)) (Tr.Act.bn alpha))
@@ -328,9 +356,13 @@ sig
   structure Tr         : STRONG_SYMBOLIC_TRANSITION
   structure ClEnv      : PSI_CLAUSE_ENVIRONMENT
 
-  val reduce :
-    ClEnv.env -> Psi.Inst.assertion -> Psi.psi -> Tr.transition list
+  datatype action_type = ANYa | VISa | OUTa | INa | TAUa
 
+  val reduce :
+    ClEnv.env -> Psi.psi -> Tr.transition list
+
+  val reduceA :
+    ClEnv.env -> Psi.psi -> action_type -> Tr.transition list
 
   sharing Psi = ClEnv.Cl.Psi = Tr.Psi
   sharing Psi.Inst = Constraint.Inst
@@ -361,27 +393,28 @@ in
   structure A          = I.Assr
   structure C          = I.Cond
   structure Cl         = Clause
+
   structure Frame      = Frame(P)
   structure L          = NominalNameList(T)
+  structure TL         = NominalList(T)
   structure N          = NominalName(T)
   structure PAlpha     = NominalAlpha(P)
   structure FrameAlpha = NominalAlpha(Frame)
 
-  type name      = I.name
-  type term      = I.term
-  type assertion = I.assertion
-  type condition = I.condition
+  type name       = I.name
+  type term       = I.term
+  type assertion  = I.assertion
+  type condition  = I.condition
+  type constraint = Constraint.constraint
 
-  type atomic = Constraint.atomic
-
-  datatype channeleq =
-    ChannelEq of (name list * assertion * term * term)
-  type suspended_constraint = (channeleq, atomic) either list
+  type channeleq = (name list * assertion * term * term)
+  datatype suspended_constraint = 
+	   Constr   of constraint
+	 | IOConstr of channeleq * constraint
 
 
   structure G = PsiGuarded(SI)
   val guarded = G.guarded
-
 
   structure K : NOMINAL =
   struct
@@ -396,30 +429,24 @@ in
 
     val swapAtom = P.swapAtom
 
-    fun swap (a,b) constraint =
-      map (fn (RIGHT ((avec, psi, cond))) =>
-      RIGHT $ (L.swap (a,b) avec,
-      A.swap (a, b) psi,
-      C.swap (a, b) cond)
-      | (LEFT (ChannelEq (avec, psi, m, n))) =>
-          LEFT $ ChannelEq (
-          L.swap (a,b) avec,
-          A.swap (a,b) psi,
-          T.swap (a,b) m,
-          T.swap (a,b) n)) constraint
+    fun swap (a,b) (Constr(c)) = Constr(Constraint.swap (a,b) c)
+      | swap (a,b) (IOConstr((bs,psi,m,n), c)) = 
+	IOConstr((L.swap (a,b) bs, 
+		  A.swap (a,b) psi, 
+		  T.swap (a,b) m, 
+		  T.swap (a,b) n),
+	 	 Constraint.swap (a,b) c)
 
-    fun support constraint =
-      List.concat $
-      map (fn RIGHT ((avec, psi, cond)) =>
-            Lst.minus ((A.support psi) @ (C.support cond)) avec
-            | LEFT (ChannelEq (avec, psi, m, n)) =>
-            Lst.minus ((T.support n) @ (A.support psi) @ (T.support m)) avec)
-            constraint
+    fun support (Constr(c)) = Constraint.support c
+      | support (IOConstr((bs,psi,m,n), c)) = 
+	(Lst.minus ((T.support n) @ (A.support psi) @ (T.support m)) bs)
+	@ (Constraint.support c)
 
     fun fresh x c = not $ Lst.member x (support c)
 
     val new = P.new
     val newBasedOn = P.newBasedOn
+    val newsBasedOn = P.newsBasedOn
 
     fun eqData _ = Err.error "TODO: define alpha equivalence"
   end;
@@ -442,490 +469,302 @@ in
   structure Residual = StrongSymbolicTransitionResidual(Tr)
   structure ResidualAlpha = NominalAlpha(Residual)
 
-  type psi_source
-    = assertion * P.psi
-
   type symbolic_transition
-    = assertion * P.psi * Act.action * suspended_constraint * P.psi
+    = P.psi * Act.action * suspended_constraint * P.psi
+
+  datatype action_type = ANYa | VISa | OUTa | INa | TAUa
 
   datatype symbolic_rules
     = IN | OUT
     | CASE  of condition
-    | PAR   of (name list, name list) either
-    | SCOPE of name
-    | OPEN  of name
-    | COM1
-    | COM2
-    | REPCOM1
-    | REPCOM2
+    | RES of name
+    | PARLEFT
+    | PARRIGHT
+    | COMLEFT
+    | COMRIGHT
+    | REPCOM
     | REPI
     | INVOCATION
 
+  fun abstractP ns p = List.foldr P.Restriction p ns
 
-  fun constraintSupport' (LEFT (ChannelEq (avec,psi,t,a))) =
-    Lst.minus (T.support a @ (A.support psi @ T.support t)) avec
-    | constraintSupport' (RIGHT ((avec,psi,cond))) =
-    Lst.minus (A.support psi @ C.support cond) avec
+  fun abstractK ns (Constr(c)) = Constr(Constraint.abstract ns c)
+    | abstractK ns (IOConstr((bs,psi,m,n), c)) = 
+	IOConstr((ns@bs,psi,m,n), Constraint.abstract ns c)
 
-  fun constraintSupport c =
-    List.concat $ map constraintSupport' c
+  fun addCond phi (Constr(c))      = Constr(      Constraint.addCond phi c)
+    | addCond phi (IOConstr(io,c)) = IOConstr(io, Constraint.addCond phi c)
 
-  fun abstractVec _ [] p = p
-    | abstractVec abs (n::ns) p = abstractVec abs ns (abs n p)
-
-  fun abstractK n c =
-      map (fn (RIGHT ((ns, a, c))) =>
-               RIGHT $ (n :: ns, a,c)
-            | (LEFT (ChannelEq (ns, a, t1, t2))) =>
-               LEFT  $ ChannelEq (n :: ns,a,t1,t2)) c
-
-  val abstractP = Tpl.curry P.Restriction
+  fun addFrame fr (Constr(c)) = Constr(Constraint.addFrame fr c)
+    | addFrame (cs,psi') (IOConstr(io as (bs,_,_,_),c)) = 
+      case KAlpha.makeFresh bs (IOConstr(io,[])) cs of
+	  IOConstr((bs,psi,m,n),_) =>
+	  IOConstr((cs@bs, I.compose (psi',psi), m,n), 
+	 	   Constraint.addFrame (cs,psi') c)
+	|_ =>  Err.undefined ()
 
   fun swapPremises2 ([a, b], r, d) = ([b, a], r, d)
     | swapPremises2 _ = Err.undefined ()
 
   structure DT =
   struct
-    type source  = psi_source
+    type source  = (P.psi * action_type)
     type premise = symbolic_transition
     type rule    = symbolic_rules
     type context = SI.ClEnv.env
 
-    fun inferIN (psi, p)  =
-      case p of
-           P.Input _ => SOME ([], IN)
-         | _ => NONE
+    fun inferIN (P.Input _, ANYa) = SOME ([], IN)
+      | inferIN (P.Input _, VISa) = SOME ([], IN)
+      | inferIN (P.Input _, INa)  = SOME ([], IN)
+      | inferIN _ = NONE
 
-    fun inferOUT (psi, p)  =
-      case p of
-           P.Output _ => SOME ([], OUT)
-         | _ => NONE
+    fun inferOUT (P.Output _, ANYa) = SOME ([], OUT)
+      | inferOUT (P.Output _, VISa) = SOME ([], OUT)
+      | inferOUT (P.Output _, OUTa) = SOME ([], OUT)
+      | inferOUT _ = NONE
 
-    fun inferCASEs e (psi, caseP) =
-      case caseP of
-           P.Case cs =>
+    fun inferRES (P.Restriction (a,p),ac) = SOME ([ (p,ac) ], RES a)
+      | inferRES _ = NONE
+
+    fun inferREPI e (P.Replication(p),ac) =
+        if guarded e p 
+	then SOME ([(p,ac)], REPI)
+        else Err.error "Unguarded process under !."
+      | inferREPI _ _ = NONE
+
+    fun inferREPCOM e (P.Replication(p), ac) =
+        if ac <> TAUa andalso ac <> ANYa then NONE
+	else if guarded e p
+        then SOME ([(p,INa),(p,OUTa)], REPCOM)
+        else Err.error "Unguarded process under !."
+      | inferREPCOM _ _ = NONE
+
+    fun inferPARs (P.Parallel (p,q),ac)  =
+        [ ([(p,ac)], PARLEFT), 
+	  ([(q,ac)], PARRIGHT) ]
+      | inferPARs _ = []
+
+    fun inferCOMs (P.Parallel (p,q), ac) =
+        if ac <> TAUa andalso ac <> ANYa then []
+	else [([ (p,OUTa),(q,INa) ], COMLEFT), 
+	      ([ (p,INa),(q,OUTa) ], COMRIGHT)]
+      | inferCOMs _ = []
+
+    fun inferCASEs e (P.Case cs,ac) =
             map (fn (phi, p) =>
-                    if guarded e p then
-                      SOME ([(psi, p)], CASE phi)
-                    else
-                      NONE) cs
-         | _ => [NONE]
+                    if guarded e p 
+		    then ([(p,ac)], CASE phi)
+                    else Err.error "Unguarded process under CASE."
+                ) cs
+      | inferCASEs _ _ = []
+
+    fun inferINVOCATIONs e (P.Invocation (a, mvec),ac) =
+        let
+            val clauses = SI.ClEnv.find e a
+            val valid = List.filter
+                            (fn (cl as (a, xvec, p)) =>
+                                (List.length xvec = List.length mvec) andalso
+                                guarded e p andalso
+                                (Cl.support cl = [])
+                            ) clauses
+        in
+            case valid of
+                [] => []
+              | _  => map (fn p => ([ (p,ac) ], INVOCATION)) $
+                          map (fn (a,xvec,p) =>
+                                  P.subst p (Lst.zip xvec mvec)) valid
+        end
+      | inferINVOCATIONs _ _ = []
 
 
-
-    fun comFresh psi p q =
+    fun infer e a =
     let
-      val pfr   = Frame.f p
-      val bpvec = Frame.binders pfr
-      (* bpvec # psi, bqvec, q *)
-      val bqvec = Frame.binders (Frame.f q)
-      val qsup  = P.support q
-      val psisup = A.support psi
-
-      val pi = PAlpha.freshNames bpvec (psisup @ bqvec @ qsup)
-
-      val p = PAlpha.permute pi p
-      val pfr = FrameAlpha.permute pi pfr
+      val rules = [ inferOUT, inferIN, inferRES, inferREPI e, inferREPCOM e ]
+      val r = (inferPARs a) @ (inferCASEs e a) @ (inferINVOCATIONs e a) @ (inferCOMs a)
+      val s = rules |> map (fn rule => rule a) |> Opt.filterSome
     in
-      (p,pfr)
+      r @ s
     end
-
-    fun inferCOM (psi, pq) =
-      case pq of
-           P.Parallel (p,q) =>
-           let
-             val (p,pfr) = comFresh psi p q
-             val (q,qfr) = comFresh psi q p
-
-             val psiQ = psi </I.compose/> Frame.assertion pfr
-             val psiP = psi </I.compose/> Frame.assertion qfr
-           in
-             [SOME ([ (psiQ, p), (psiP, q) ], COM1)
-             ,SOME ([ (psiQ, p), (psiP, q) ], COM2)]
-           end
-         | _ => [NONE]
-
-    fun inferREPCOM e (psi, bangP) =
-      case bangP of
-           P.Replication p =>
-           if guarded e p then
-             let
-               val b1vec = agentBinders p
-               val p1 = PAlpha.makeFresh b1vec p $
-                            (A.support psi) @ (P.support bangP)
-
-               val b1vec = agentBinders p1
-               val b2vec = agentBinders p
-               val p2 = PAlpha.makeFresh b2vec p $
-                            (A.support psi) @ (P.support bangP) @ b1vec
-             in
-               [ SOME ([(psi, p1), (psi, p2)], REPCOM1)
-               , SOME ([(psi, p2), (psi, p1)], REPCOM2) ]
-             end
-           else [NONE]
-         | _ => [NONE]
-
-
-    fun inferREPI e (psi, bangP) =
-      case bangP of
-           P.Replication p =>
-           if guarded e p then
-             SOME ([ (psi, p) ], REPI)
-           else NONE
-         | _ => NONE
-
-
-    fun inferPAR (psi, parP)  =
-    let
-      fun par p q =
-      let
-        (* bqvec # psi, p, alpha *)
-        val qfr   = Frame.f q
-        val bqvec = Frame.binders qfr
-
-        val pi = FrameAlpha.freshNames bqvec
-            (A.support psi @ P.support p)
-
-        val psiQ = Frame.assertion (FrameAlpha.permute pi qfr)
-
-        val psiPsiQ = psi </I.compose/> psiQ
-
-        (*
-        val fq = Frame.f q
-        val bqvec = Frame.binders fq
-
-        (* Frame.f Q = (nu bqvec) Psiq, bqvec # psi, p *)
-        val bpvec = Frame.binders $ Frame.f p
-        val fq = FrameAlpha.makeFresh bqvec fq $
-                            (P.support p) @ (A.support psi) @ bpvec
-        val newPsi = I.compose (psi, Frame.assertion fq)
-        val bqvec = Frame.binders fq *)
-      in
-        ((psiPsiQ, p), [])
-        (* ((newPsi, p), bqvec) *)
-      end
-    in
-      case parP of
-           P.Parallel (p,q) =>
-           let
-             val (parL, bqvec) = par p q
-             val (parR, bpvec) = par q p
-           in
-            [ SOME ([parL], PAR (LEFT bqvec)), SOME ([parR], PAR (RIGHT bpvec)) ]
-           end
-         | _ => [NONE]
-    end
-
-    fun inferSCOPE (psi, resP)  =
-      case resP of
-           P.Restriction (a,p) =>
-                if (A.fresh a psi)
-                    then SOME ([(psi, p)], (SCOPE a))
-                    else
-                      let val nn = P.newBasedOn a (A.support psi)
-                      in SOME ([(psi, P.swap (a,nn) p)], (SCOPE nn))
-                      end
-         | _ => NONE
-
-    fun inferOPEN (psi, resP)  =
-      case resP of
-           P.Restriction (a,p) =>
-            if (A.fresh a psi)
-                then SOME ([(psi, p)], OPEN a)
-                else
-                  let val nn = P.newBasedOn a (A.support psi)
-                  in SOME ([(psi, P.swap (a,nn) p)], (OPEN nn))
-                  end
-         | _ => NONE
-
-    fun inferINVOCATION e (psi, invP) =
-      case invP of
-           P.Invocation (a, mvec) =>
-           let
-             val clauses = SI.ClEnv.find e a
-             val valid = List.filter
-                (fn (cl as (a, xvec, p)) =>
-                    (List.length xvec = List.length mvec) andalso
-                    guarded e p andalso
-                    (Cl.support cl = [])
-                ) clauses
-           in
-             case valid of
-                  [] => [NONE]
-                | _  => map (fn p => SOME ([(psi, p)], INVOCATION)) $
-                    map (fn (a,xvec,p) =>
-                            P.subst p (Lst.zip xvec mvec)) valid
-           end
-         | _ => [NONE]
-
-
-    fun infer e (a as (psi, term)) =
-    let
-      val rules = [inferOPEN, inferSCOPE, inferOUT, inferIN
-                  ,(inferREPI e)]
-      val r = (inferCOM a)
-            @ (inferREPCOM e a)
-            @ (inferPAR a)
-            @ (inferCASEs e a)
-            @ (inferINVOCATION e a)
-            @ (map (fn rule => rule a) rules)
-      val res = Opt.filterSome r
-    in
-      res
-    end
-
 
     (* TODO: add a wellformedness condition before simulating *)
 
-    fun eval_axiom e (IN,  (psi, ip as (P.Input (m, [x], _, p)))) =
+    fun eval_axiom e (IN, (ip as (P.Input (m, xs, _, p)),_)) =
         (* y # psi, m, p, x   *)
         let
-          val y = P.newBasedOn x
-            (x :: (A.support psi) @ (T.support m) @ (P.support p))
+          val y = P.new (xs @ (T.support m) @ (P.support p))
         in
-          SOME ( psi, ip, Act.Input (SI.var y, x), [LEFT $ ChannelEq ([], psi, m, SI.var y)], p)
+          SOME ( ip, Act.Input (SI.var y, xs), IOConstr(([], I.unit, m, SI.var y),[]), p)
         end
 
-      | eval_axiom e (OUT, (psi, ip as (P.Output (m, n, p)))) =
-        (* y # psi, m, p, n    *)
-        let val y = (P.new
-            ((T.support n) @ (A.support psi) @ (T.support m) @ (P.support p)))
-        in SOME ( psi, ip, Act.Output (SI.var y, [], n), [LEFT $ ChannelEq ([], psi, m, SI.var y)], p)
+      | eval_axiom e (OUT, (ip as (P.Output (m, ns, p)),_)) =
+        (* y # psi, m, p, ns    *)
+        let val y = (P.new ((TL.support ns) @ (T.support m) @ (P.support p)))
+        in SOME ( ip, Act.Output (SI.var y, [], ns), IOConstr(([], I.unit, m, SI.var y),[]), p)
         end
       | eval_axiom _ _ = Err.undefined ()
 
 
     fun switchSubj (alpha, c) name =
     let
-      val alpha =
+      val alpha' =
         case alpha of
-             Act.Output (_, avec, n) => Act.Output (name, avec, n)
-           | Act.Input  (_, x)       => Act.Input  (name, x)
+             Act.Output (_, avec, ns) => Act.Output (name, avec, ns)
+           | Act.Input  (_, xs)       => Act.Input  (name, xs)
            | _ => Err.error "An undefined case in Simulator.switchSubj 1"
-      val c =
+      val c' =
         case c of
-             (LEFT (ChannelEq (avec, psi, m, y)))::cs =>
-                (LEFT $ ChannelEq (avec, psi, m, name))::cs
+             (IOConstr((avec, psi, ms, y),cs)) =>
+	      IOConstr((avec, psi, ms, name),cs)
            | _ => Err.error "An undefined case in Simulator.switchSubj 2"
     in
-      (alpha, c)
+      (alpha', c')
     end
 
 
 
-    fun evalPAR ([(psiQ, iP, alpha, c, dP)],
-                  (psi, (pq as (P.Parallel (p, q))))) bqvec =
+    fun evalPAR ([(iP, alpha, c, dP)], pq as (P.Parallel (p, q))) =
         let
-          (*
-          fun obj_support (AOutput (_,_,n)) = T.support n
-            | obj_support _ = []
-
-          fun m_support ((LEFT (ChannelEq (_,_,m,_)))::_) = T.support m
-            | m_support _ = []
-
-          val qSupport = P.support q
-
-            *)
           fun permuteL swap pi l = Lst.foldl swap l pi
 
           (* bn(alpha) # Q *)
-          val pi = ResidualAlpha.freshNames (Act.bn alpha) (P.support q)
+          val pi = ResidualAlpha.freshNames (Act.bn alpha) $ 
+                   (T.support (Act.subj alpha))@(P.support q)
           val dP = PAlpha.permute pi dP
           val alpha = case alpha of
                            Act.Tau => Act.Tau
-                         | Act.Output (m,avec,n) =>
+                         | Act.Output (m,avec,ns) =>
                              Act.Output(m, permuteL L.swap pi avec,
-                                     permuteL T.swap pi n)
-                         | Act.Input (m,x) => Act.Input(m,
-                                hd (permuteL L.swap pi [x]))
+                                     permuteL TL.swap pi ns)
+                         | Act.Input (m,xs) => Act.Input(m,
+				     permuteL L.swap pi xs)
 
-          val bqvec = Frame.binders (Frame.f q)
-          val pi = FrameAlpha.freshNames bqvec
-                    (A.support psi @ P.support p)
+          val bqvec' = Frame.binders (Frame.f q)
+          val pi = FrameAlpha.freshNames bqvec' (P.support p)
           val q = PAlpha.permute pi q
-          val bqvec = Frame.binders (Frame.f q)
+          val fQ = Frame.f q
+          val bqvec = Frame.binders fQ
+          val psiQ = Frame.assertion fQ
         in
-          SOME (psi, pq, alpha, abstractVec abstractK bqvec c,
-                P.Parallel (dP,q))
-          (*
-          (* bn(alpha) # Q *)
-          ResidualAlpha.makeFresh (bn alpha) (alpha, dP) qSupport |>
-          (fn (alpha, dP) =>
-            let
-            (* subj(alpha) # Q *)
-            (* y, z # psi, bpvec, p, bqvec, q, n, avec *)
-            val (alpha, c) =
-              if ((isTau alpha) orelse
-                        (P.fresh (hd (T.support (subj alpha))) q))
-                  then (alpha, c)
-                  else
-                     let
-                       val n = P.new
-                         (qSupport @ (A.support psiQ) @ (P.support dP) @
-                         (bn alpha) @ (obj_support alpha) @ (m_support c))
-                     in switchSubj (alpha, c) (SI.var n) end
-
-            (* bqvec # alpha *)
-            val c = abstractVec abstractK bqvec c
-            val c = KAlpha.makeFresh bqvec c (Act.support alpha)
-          in
-            SOME (psi, pq, alpha, c, P.Parallel (dP, q))
-          end) *)
+          SOME (pq, alpha, addFrame (bqvec,psiQ) c, P.Parallel (dP,q))
         end
-      | evalPAR _ _ = Err.undefined ()
+      | evalPAR _ = Err.undefined ()
 
 
-    fun evalCOM ([(psiQ, iP, Act.Output (y, avec, n),
-                            (c1 as (LEFT (ChannelEq (bpvec, psiPQ1, mp, _)))::cp), dP),
-                 (psiP, iQ, Act.Input (z, x),
-                            (c2 as (LEFT (ChannelEq (bqvec, psiPQ2, mq, _)))::cq), dQ)]
+    fun evalCOM ([(iP, oP as Act.Output(_,avec,_), (IOConstr(ioP as (bpvec, psiP, _, _),cp)), dP),
+                  (iQ, Act.Input (z, xs),          (IOConstr(ioQ as (bqvec, psiQ, _, _),cq)), dQ)]
                   ,_,
-                  (psi, oPQ)) sym =
-    let
+                  (oPQ,ANYa)) sym =
+	let
       (* avec # Q *)
-      val (out, dP) =
-        ResidualAlpha.makeFresh avec (Act.Output(y,avec,n), dP) (P.support iQ)
+      val (avec,ns, dP) =
+        case ResidualAlpha.makeFresh avec (oP, dP) (P.support iQ)
+         of (Act.Output(_,avec,ns),dp) => (avec,ns,dp)
+          | _ => Err.undefined ()
 
-      val pq = (if sym then Tpl.swap else id) (dP, P.subst dQ [(x, n)])
-      val pq = abstractVec abstractP avec (P.Parallel pq)
+      val pq' = (if sym then Tpl.swap else id) (dP, P.subst dQ (Lst.zip xs ns))
+      val pq = abstractP avec (P.Parallel pq')
+      val c =
+	case KAlpha.makeFresh bpvec  (IOConstr(ioP,[])) (bqvec @ (P.support iQ)) of
+            IOConstr((bvec1, psiP, m, _),_) =>
+        (case KAlpha.makeFresh bqvec (IOConstr(ioQ,[])) (bpvec @ (P.support iP)) of
+            IOConstr((bvec2, psiQ, n, _),_) => 
+	    (bvec1 @ bvec2, psiP </I.compose/> psiQ, [I.chaneq (m, n)])
+          | _ => Err.undefined ())
+          | _ => Err.undefined ()
     in
-      SOME (psi, oPQ, Act.Tau,
-        (RIGHT (bpvec @ bqvec, psiPQ1 </I.compose/> psiPQ2, mp </I.chaneq/> mq))
-          :: (abstractVec abstractK bqvec cp @ abstractVec abstractK bpvec cq),
+      SOME (oPQ, Act.Tau,
+        Constr(c :: Constraint.addFrame (bqvec, psiQ) cp 
+                  @ Constraint.addFrame (bpvec, psiP) cq),
           pq)
     end
       | evalCOM _ _ = Err.undefined ()
 
 
-    fun evalREPCOM ([(_, p1, alpha1 as Act.Output (y, avec, n),
-                            (c1 as (LEFT (ChannelEq (bvec1, _, m, _)))::cs1), dP1),
-                     (_, p2, Act.Input (z, x),
-                            (c2 as (LEFT (ChannelEq (bvec2, _, mp, _)))::cs2), dP2)],
-                    _,
-                    (psi, p)) sym =
+    fun evalREPCOM ([(p1, alpha1 as Act.Output (y, avec, ns),
+                            (IOConstr(c1 as (bvec1, _, _, _),cs1)), dP1),
+                     (p2, Act.Input (z, xs),
+                            (IOConstr(c2 as (bvec2, _, _, _),cs2)), dP2)],
+                    REPCOM,
+                    (p,ANYa)) sym =
     let
       val sw = if sym then Tpl.swap else id
-
       val (alpha1, dP1) =
         ResidualAlpha.makeFresh avec (alpha1, dP1) (P.support p)
+      val c =
+	case KAlpha.makeFresh bvec1  (IOConstr(c1,[])) (bvec2 @ (P.support p2)) of
+            IOConstr((bvec1, _, m, _),_) =>
+        (case KAlpha.makeFresh bvec2 (IOConstr(c2,[])) (bvec1 @ (P.support p1)) of
+            IOConstr((bvec2, _, n, _),_) => (* frame of p1=p2 is equivalent to I.unit. *)
+	     Constr((bvec1 @ bvec2, I.unit, [I.chaneq (m, n)]) :: (cs1 @ cs2))
+          | _ => Err.undefined ())
+          | _ => Err.undefined ()
+      val (xs,dP2) =
+        case ResidualAlpha.makeFresh xs (Act.Input(z,xs), dP2) (P.support p) of
+	    (Act.Input(_,xs), dP2) => (xs,dP2)
+          | _ => Err.undefined ()
+      val dP = abstractP avec $ P.Parallel $ 
+		sw (dP1, P.subst (P.Parallel (dP2, p)) (Lst.zip xs ns))
     in
-      KAlpha.makeFresh bvec1 c1 (bvec2 @ (A.support psi) @ (P.support p2)) |>
-        (fn ((LEFT (ChannelEq (bvec1, psi, m, _)))::cs1) =>
-            KAlpha.makeFresh bvec2 c2 (bvec1 @ (A.support psi) @ (P.support p1)) |>
-            (fn ((LEFT (ChannelEq (bvec2, psi, mp, _)))::cs2) =>
-            let
-              val c = (RIGHT $ (bvec1 @ bvec2, psi, I.chaneq (m, mp)))
-                    :: ((abstractVec abstractK bvec2 cs1)
-                    @ (abstractVec abstractK bvec1 cs2))
-            in
-              ResidualAlpha.makeFresh [x] (Act.Input(z,x), dP2) (P.support p) |>
-              (* x # !P *)
-              (fn (Act.Input(z,x), dP2) =>
-               let
-                 val dP = P.Parallel $ sw (dP1, P.subst (P.Parallel (dP2, p)) [(x, n)])
-                 val dP = abstractVec abstractP avec dP
-               in
-                 SOME (psi, p, Act.Tau, c, dP)
-               end
-              | _ => Err.undefined ())
-            end
-            | _ => Err.undefined ())
-         | _ => Err.undefined ())
+        SOME (p, Act.Tau, c, dP)
     end
       | evalREPCOM _ _ = Err.undefined ()
 
 
-    fun eval e (premises as [(psi1, iP, alpha, c, dP)],
-              PAR (LEFT bqvec),
-              conclusion as (psi, (pq as (P.Parallel (p, q))))) =
-                evalPAR (premises, conclusion) bqvec
+    fun eval e (premises as [(iP, alpha, c, dP)], PARLEFT,  (P.Parallel (p, q),_)) =
+        evalPAR (premises, P.Parallel (p, q))
 
-      | eval e (premises as [(psi1, iQ, alpha, c, dQ)],
-              PAR (RIGHT bpvec),
-              (assert, (P.Parallel (p, q)))) =
-              Opt.some
-                (fn (psi, P.Parallel(q,p), alpha, c, P.Parallel(dq,dp)) =>
-                    (psi, P.Parallel(p,q), alpha, c, P.Parallel(dp,dq))
-                  | _ => Err.error "Impossible case in Simulator.eval PAR RIGHT")
-                (evalPAR (premises, (assert, P.Parallel (q, p))) bpvec)
+      | eval e (premises as [(iQ, alpha, c, dQ)], PARRIGHT, (P.Parallel (p, q),_)) =
+        Opt.some
+            (fn (P.Parallel(q,p), alpha, c, P.Parallel(dq,dp)) =>
+                (P.Parallel(p,q), alpha, c, P.Parallel(dp,dq))
+              | _ => Err.error "Impossible case in Simulator.eval PAR RIGHT")
+            (evalPAR (premises, (P.Parallel (q, p))))
 
-      | eval e (r as ([(t1 as (_,_,a1,_,_)), (t2 as (_,_,a2,_,_))],
-              COM1,
-              (psi, oPQ))) =
-          (case (a1, a2) of
-               (Act.Output _, Act.Input  _) => evalCOM r false
-             | _ => NONE)
+      | eval e (r as ([(_,Act.Output(_,_,ns),_,_), (_,Act.Input(_,xs),_,_)], COMLEFT, (oPQ, ANYa))) = 
+        if List.length ns <> List.length xs then NONE else evalCOM r false
 
-      | eval e (r as ([(t1 as (_,_,a1,_,_)), (t2 as (_,_,a2,_,_))],
-              COM2,
-              (psi, oPQ))) =
-          (case (a1, a2) of
-               (Act.Input _,  Act.Output _) => evalCOM (swapPremises2 r) true
-             | _ => NONE)
+      | eval e (_, COMLEFT, _) = NONE
 
-      | eval e ([(_, iP, alpha, c, dP)],
-              SCOPE a,
-              (psi, (cP as (P.Restriction (_, p))))) =
+      | eval e (r as ([(_,Act.Input(_,xs),_,_), (_,Act.Output(_,_,ns),_,_)], COMRIGHT, (oPQ, ANYa))) = 
+        if List.length ns <> List.length xs then NONE else evalCOM (swapPremises2 r) true
+      | eval e (_, COMRIGHT, _) = NONE
 
-          if isTau alpha orelse Act.fresh a alpha then
-            SOME (psi, cP, alpha, abstractK a c, abstractP a dP)
-          else if isOutput alpha andalso not $ T.fresh a (Act.obj alpha) then
-            NONE
-          else let val (alpha, c) = switchSubj (alpha, c) $
-                                        SI.var $ L.newBasedOn a (a :: (A.support psi)
-                                                       @ K.support c)
-               in SOME (psi, cP, alpha, abstractK a c, abstractP a dP)
-               end
-
-      | eval e ([(_, iP, alpha, c, dP)],
-              OPEN a,
-              (psi, (cP as (P.Restriction (_, p))))) =
-        (case alpha of
-             Act.Output (y, a_s, n) =>
-                  if Lst.member a (T.support n)
-                    then SOME (psi, cP, Act.Output (y, (a :: a_s), n),
-                            abstractK a c, dP)
-                    else NONE
-           | _ => NONE)
+      | eval e ([(iP, alpha, c, dP)], RES a, (cP as (P.Restriction (_, p)),_)) =
+        if isTau alpha orelse Act.fresh a alpha then
+            SOME (cP, alpha, abstractK [a] c, P.Restriction(a,dP)) (* SCOPE *)
+        else if not $ T.fresh a (Act.subj alpha)
+	then let val (alpha, c) = switchSubj (alpha, c) $
+				  SI.var $ L.newBasedOn a (a :: K.support c)
+             in SOME (cP, alpha, abstractK [a] c, P.Restriction(a,dP))
+	     end
+	else (case alpha of 	(* OPEN *)
+		  Act.Output (y, a_s, ns) =>
+		  if Lst.member a (TL.support ns)
+		  then SOME (cP, Act.Output (y, (a :: a_s), ns), abstractK [a] c, dP)
+		  else NONE
+		|_=>NONE) 	(* What to do if a is an input variable? *)
+      | eval e (_, RES _, _) = NONE
 
       (* TODO: clear this with Magnus *)
-      | eval e ([(_, iP, alpha, c, dP)],
-              CASE cond,
-              (psi, cases)) =
-              let
-                val sbj = if isTau alpha then [] else [Act.subj alpha]
-                val sbj = List.concat $ map T.support sbj
-                val n = L.new (sbj @ C.support cond @ constraintSupport c)
-                val (alpha, c) = if isTau alpha
-                                    then (alpha,c)
-                                    else switchSubj (alpha,c) (SI.var n)
-              in
-                SOME (psi, cases, alpha, c @ [RIGHT $ ([], psi, cond)], dP)
-              end
+      | eval e ([(iP, alpha, c, dP)], CASE cond, (cases,_)) =
+        let
+            val sbj = if isTau alpha then [] else T.support $ Act.subj alpha
+            val n = L.new (sbj @ C.support cond @ K.support c)
+            val (alpha, c) = if isTau alpha
+                             then (alpha,c)
+                             else switchSubj (alpha,c) (SI.var n)
+        in
+            SOME (cases, alpha, addCond cond c, dP)
+        end
 
-      | eval e ([(_, iP, alpha, c, dP)],
-              REPI,
-              (psi, p)) =
-        SOME (psi, p, alpha, c, P.Parallel (dP, p))
+      | eval e ([(iP, alpha, c, dP)], REPI,  (p,_)) =
+        SOME (p, alpha, c, P.Parallel (dP, p))
 
+      | eval e (r as ([(_, Act.Output(_,_,ns), _, _), (_, Act.Input(_,xs), _, _)], REPCOM, _)) =
+        if List.length ns <> List.length xs then NONE else evalREPCOM r true
+      | eval e (_,REPCOM,_) = NONE
 
-      | eval e (r as ([(_, p1, alpha1, c1, dP1), (_, p2, alpha2, c2, dP2)],
-                    REPCOM1,
-                    (psi, p))) =
-        (case (alpha1, alpha2) of
-              (Act.Output _, Act.Input _) => evalREPCOM r false
-            | _ => NONE)
-
-      | eval e (r as ([(_, p1, alpha1, c1, dP1), (_, p2, alpha2, c2, dP2)],
-              REPCOM2,
-              (psi, p))) =
-        (case (alpha1, alpha2) of
-              (Act.Input _, Act.Output _) =>
-                evalREPCOM (swapPremises2 r) true
-            | _ => NONE)
-
-      | eval e ([(p, ps, alpha, c, dP)], INVOCATION, (psi, amvec)) =
-        SOME (psi, amvec, alpha, c, dP)
+      | eval e ([(ps, alpha, c, dP)], INVOCATION, (amvec,_)) = SOME (amvec, alpha, c, dP)
 
       | eval _ _ = Err.error "Unhandled case in Simulator.eval"
 
@@ -934,24 +773,23 @@ in
   structure D = DerivationTree(DT)
 
 
-  val advance =
-    map $ either (fn ChannelEq (avec, psi, m, y) =>
-                    (avec, psi, I.chaneq(m, y)))
-                  id
+  fun advance (IOConstr((bs,psi,m,n), c)) = (bs, psi, [I.chaneq(m, n)])::c
+    | advance (Constr(c)) = c
 
 
-  fun reduce e psi p =
+  fun reduceA e p ac =
   let
-    val tree = D.eval_all e (psi, p)
+    val tree = D.eval_all e (p,ac)
     val tr  = map (fn (D.EInf (_,_,conclusion)) => conclusion) tree
-    val tr' = map (fn (psi, p, alpha, c, p') =>
-                    (psi,p,alpha, advance c, p')) tr
+    val tr' = map (fn (p, alpha, c, p') => (p,alpha, advance c, p')) tr
   in
     tr'
   end
 
+  fun reduce e p = reduceA e p ANYa
+
   fun debugTree p =
-    D.eval_all ClEnv.empty (I.unit, p)
+    D.eval_all ClEnv.empty p
 
                     (*
   fun valid_trees tree =

@@ -426,43 +426,30 @@ struct
         List.find (fn (p',q') => Psi.eqData (p,p') andalso Psi.eqData (q,q')) w
 
 
-  val unitPsi = Psi.Inst.unit
+  val unitPsi = Psi.Inst.unit   (* Carry around an assertion some day. *)
 
-  fun translateC []         = True
-    | translateC [c]        = Atomic c
-    | translateC (c::cstrs) = Conj (Atomic c, translateC cstrs)
+  fun translateOne (bv,psi,[]) = []
+    | translateOne (bv,psi,phi::phis) = 
+      Atomic (bv,psi,phi) :: translateOne (bv,psi,phis)
+
+  fun translateC []    = True
+    | translateC cstrs = 
+      Lst.reduce Conj $	Lst.flatmapmix translateOne cstrs
 
   fun collectCstrDeriv trs =
-    map (fn (psi,p,alpha,c,p') => (translateC c,p')) trs
+    map (fn (p,alpha,c,p') => (translateC c, p')) trs
 
 
   fun freshness avec p =
     List.foldr (fn (a,c) => FreshP (a,p) </Conj/> c) True avec
 
-  fun silent env p = WSim.silent env unitPsi p
+  fun strictTau env p = WSim.Sim.reduceA env p WSim.Sim.TAUa
+  fun strictOut env p = WSim.Sim.reduceA env p WSim.Sim.OUTa
+  fun strictIn  env p = WSim.Sim.reduceA env p WSim.Sim.INa
 
-  fun strictTau env p =
-    List.filter (fn (psi,p,WSim.Sim.Tr.Act.Tau,c,p') => true
-                  | _ => false
-                ) $ WSim.Sim.reduce env unitPsi p
-
-  fun strictOut env p =
-    List.filter (fn (psi,p,WSim.Sim.Tr.Act.Output _,c,p') => true
-                  | _ => false
-                ) $ WSim.Sim.reduce env unitPsi p
-
-  fun strictIn env p =
-    List.filter (fn (psi,p,WSim.Sim.Tr.Act.Input _,c,p') => true
-                  | _ => false
-                ) $ WSim.Sim.reduce env unitPsi p
-
-  fun weakOut env p =
-    List.filter (fn (psi,p,WSim.Tr.Output _,c,p') => true | _ => false
-                ) $ WSim.reduce env unitPsi p
-
-  fun weakIn env p =
-    List.filter (fn (psi,p,WSim.Tr.Input _,c,p') => true | _ => false
-                ) $ WSim.reduce env unitPsi p
+  fun silent  env p = WSim.silent  env p
+  fun weakOut env p = WSim.reduceA env p WSim.Sim.OUTa
+  fun weakIn  env p = WSim.reduceA env p WSim.Sim.INa
 
   val xNames       = ref ([] : Psi.Inst.name list)
   fun addName a    = xNames := (a :: !xNames)
@@ -513,7 +500,7 @@ struct
   and matchOut env (p,q) c w =
   let
     val ptr = (strictOut env p) |> map
-        (fn (psi,p,(WSim.Sim.Tr.Act.Output (y', avec, n)), cpi, pi) =>
+        (fn (p,(WSim.Sim.Tr.Act.Output (y', avec, n)), cpi, pi) =>
             let
               val supP = Psi.support p
               val supQ = Psi.support q
@@ -529,28 +516,28 @@ struct
             end
           | _ => Err.undefined ())
 
-    val (cvec, tvec) = ListPair.unzip $ map (fn ((y,avec,n), cpi, pi) =>
+    val (cvec, tvec) = ListPair.unzip $ map (fn ((y,avec,ns), cpi, pi) =>
         let
           val qtr = weakOut env q
-            |> List.filter (fn (_,_,WSim.Tr.Output (z,cvec,n'),_,_) =>
+            |> List.filter (fn (_,WSim.Tr.Output (z,cvec,ns'),_,_) =>
                 length cvec = length avec | _ => false)
             |> map
-            (fn (psi,q,WSim.Tr.Output (z,cvec,n'),cqj,qj) =>
-                ((y, avec, permute Psi.Inst.Term.swap (zip avec cvec) n'),
+            (fn (q,WSim.Tr.Output (z,cvec,ns'),cqj,qj) =>
+                ((y, avec, List.map (permute Psi.Inst.Term.swap (zip avec cvec)) ns'),
                  C.swap (unvar z, y) (translateC cqj),
                  permute Psi.swap (zip avec cvec) qj)
               | _ => Err.undefined () )
-          val (civec,tivec) = ListPair.unzip $ map (fn ((z,cvec,n'),cqj,qj) =>
+          val (civec,tivec) = ListPair.unzip $ map (fn ((z,cvec,ns'),cqj,qj) =>
             let
               val (cij,tij) =
                 close env
                       (pi,qj)
-                      (c </Conj/> cpi </Conj/> cqj </Conj/>
-                      (n </TermEq/> n') </Conj/>
-                      freshness avec p </Conj/> freshness avec q)
+		      (Lst.reduce Conj (Lst.zipwith TermEq ns ns') </Conj/>
+                        (c </Conj/> cpi </Conj/> cqj </Conj/>
+                          freshness avec p </Conj/> freshness avec q))
                       ((p,q)::w)
             in
-              (cpi </Conj/> (n </TermEq/> n') </Conj/> cij, tij)
+              (cpi </Conj/> (Lst.reduce Conj (Lst.zipwith TermEq ns ns')) </Conj/> cij, tij)
             end ) qtr
         in
           (Forall (y, (cpi </Conj/> freshness avec p </Conj/> freshness avec q)
@@ -564,8 +551,9 @@ struct
 
   and matchIn env (p,q) c w =
   let
+    fun folder ((x,x'),pi) = Psi.swap (x,x') pi
     val ptr = strictIn env p |> map
-        (fn (psi,p,WSim.Sim.Tr.Act.Input (y',x'),cpi,pi) =>
+        (fn (p,WSim.Sim.Tr.Act.Input (y',xs'),cpi,pi) =>
          let
            val supP = Psi.support p
            val supQ = Psi.support q
@@ -574,15 +562,15 @@ struct
            val cpi  = C.swap (y, unvar y')
                              (translateC cpi)
            val supCpi = C.support cpi
-           val x = Psi.Inst.Term.newBasedOn x' (y :: supP @ supQ @ supC @ supCpi)
-           val pi = Psi.swap (x,x') pi
+           val xs = Psi.Inst.Term.newsBasedOn xs' (y :: supP @ supQ @ supC @ supCpi)
+           val pi= List.foldr folder pi (Lst.zip xs xs')
          in
-           ((y, x), cpi, pi)
+           ((y, xs), cpi, pi)
          end | _ => Err.undefined () )
-    val (cvec,tvec) = ListPair.unzip (map (fn ((y,x), cpi, pi) =>
+    val (cvec,tvec) = ListPair.unzip (map (fn ((y,xs), cpi, pi) =>
         let
-          val qtr = weakIn env q |> map (fn (psi,q,WSim.Tr.Input (z,x'),cqj,qj) =>
-            ((y, x), C.swap (y,unvar z) (translateC cqj), Psi.swap (x,x') qj)
+          val qtr = weakIn env q |> map (fn (q,WSim.Tr.Input (z,xs'),cqj,qj) =>
+            ((y, xs), C.swap (y,unvar z) (translateC cqj), List.foldr folder qj $ Lst.zip xs xs')
             | _ => Err.undefined () )
           val (civec,tivec) = ListPair.unzip (map (fn ((z,x),cqj,qj) =>
             let

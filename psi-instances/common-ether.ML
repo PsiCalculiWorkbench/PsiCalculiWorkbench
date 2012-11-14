@@ -142,9 +142,9 @@ struct
   end
 
   fun tr ((sigma, psi'), []) = node ((sigma,psi'),[])
-    | tr ((sigma, psi'),((c as (avec, psi, (Eq (a,b))))::cs))
-    = Constraint.subst [c] sigma |>
-    (fn [(_, psi'', (Eq (a',b')))] =>
+    | tr ((sigma, psi'),((c as (avec, psi, [(Eq (a,b))]))::cs)) =
+    (case Constraint.subst sigma [c] of
+      [(_, psi'', [Eq (a',b')])] =>
         let
           val psi'' = compose (psi'', psi')
           (* menmonic af = a is fresh in avec *)
@@ -201,15 +201,18 @@ struct
              | _  => node ((sigma,psi'),
                            map (fn sol => tr (sol, cs)) valid)
         end
-      | _ => Err.undefined ())
+      | _ => Err.error "explode failed in common-ether.ML")
+      | tr _ = Err.undefined ()
 
   and fail () = []
   and node (n,[]) = [n]
     | node (n,l)  = List.concat l
 
+  fun explode (avec,psi,phis) = map (fn phi => (avec, psi, [phi])) phis
+
   fun solve cs =
   let
-    val sols = tr (([], []), cs)
+    val sols = tr (([], []), Lst.flatmapmix explode cs)
   in
     case sols of
          [] => Either.LEFT []

@@ -11,8 +11,9 @@ sig
   val atomSort  : atom -> AtomSort.sort
   val dataSort  : data -> DataSort.sort
 
-  val new       : atom list -> atom
-  val newBasedOn: atom -> atom list -> atom
+  val new         : atom list -> atom
+  val newBasedOn  : atom -> atom list -> atom
+  val newsBasedOn : atom list -> atom list -> atom list
 
   val swapAtom  : atom * atom -> atom -> atom
   val swap      : atom * atom -> data -> data
@@ -34,10 +35,10 @@ sig
   val atomSort  : atom -> AtomSort.sort
   val dataSort  : data -> DataSort.sort
 
-  val swap      : atom * atom -> data -> data
-  val support   : data -> atom list
-  val new       : atom list -> atom
-  val newBasedOn: atom -> atom list -> atom
+  val swap        : atom * atom -> data -> data
+  val support     : data -> atom list
+  val new         : atom list -> atom
+  val newBasedOn  : atom -> atom list -> atom
 
   val eq  : (((atom * data) * (atom * data)) -> bool) ->
             data * data -> bool
@@ -59,10 +60,17 @@ struct
     if a = d then b else
     if b = d then a else d
 
-  val swap    = N.swap
-  val support = N.support
-  val new     = N.new
-  val newBasedOn= N.newBasedOn
+  val swap        = N.swap
+  val support     = N.support
+  val new         = N.new
+  val newBasedOn  = N.newBasedOn
+  
+  fun NBOhelper (x,(acc,nos)) = 
+      let 
+	  val y = (N.newBasedOn x nos) 
+      in (y::acc,y::nos)
+      end
+  fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
 
   fun fresh a d = not (Lst.member a (support d))
 
@@ -109,7 +117,14 @@ struct
   fun fresh a b = a <> b
   val swap      = swapAtom
   val new       = N.new
-  val newBasedOn= N.newBasedOn
+  val newBasedOn = N.newBasedOn
+
+  fun NBOhelper (x,(acc,nos)) = 
+      let 
+	  val y = (N.newBasedOn x nos) 
+      in (y::acc,y::nos)
+      end
+  fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
 
   fun eqData (n,m) = n = m
 end;
@@ -131,6 +146,13 @@ struct
   val swap      = swapAtom
   val new       = N.new
   val newBasedOn= N.newBasedOn
+
+  fun NBOhelper (x,(acc,nos)) = 
+      let 
+	  val y = (N.newBasedOn x nos) 
+      in (y::acc,y::nos)
+      end
+  fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
 
   fun eqData (n,m) = n = m
 end;
@@ -156,6 +178,13 @@ struct
   fun fresh a l = List.all (A.fresh a) l
   val new       = A.new
   val newBasedOn= A.newBasedOn
+
+  fun NBOhelper (x,(acc,nos)) = 
+      let 
+	  val y = (A.newBasedOn x nos) 
+      in (y::acc,y::nos)
+      end
+  fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
 
   fun eqData ([], [])       = true
     | eqData ([], ms)       = false

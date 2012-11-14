@@ -11,13 +11,15 @@ sig
   datatype weak_action
     = Silent
     | Tau
-    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term
-    | Input  of Psi.Inst.term * Psi.Inst.name
+    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
+    | Input  of Psi.Inst.term * Psi.Inst.name list
 
   type weak_transition
-    = Psi.Inst.assertion
-        * Psi.psi * weak_action * Constraint.constraint * Psi.psi
+    = Psi.psi * weak_action * Constraint.constraint * Psi.psi
 
+  val addFrame : (Psi.atom list * Psi.Inst.assertion) 
+                 -> weak_transition -> weak_transition
+                                                                             
 end;
 
 
@@ -34,12 +36,15 @@ struct
   datatype weak_action
     = Silent
     | Tau
-    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term
-    | Input  of Psi.Inst.term * Psi.Inst.name
+    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
+    | Input  of Psi.Inst.term * Psi.Inst.name list
 
   type weak_transition
-    = Psi.Inst.assertion
-        * Psi.psi * weak_action * Constraint.constraint * Psi.psi
+    = Psi.psi * weak_action * Constraint.constraint * Psi.psi
+
+  
+  fun addFrame fr (p,act,c,q) = (p,act,Constraint.addFrame fr c,q)
+
 end;
 
 
@@ -53,22 +58,14 @@ sig
    * Compute all weak transitions
    *)
   val reduce
-    : Sim.ClEnv.env -> Sim.Psi.Inst.assertion -> Sim.Psi.psi
-    -> Tr.weak_transition list
+    : Sim.ClEnv.env -> Sim.Psi.psi -> Tr.weak_transition list
 
-  (**
-   * Compute all the silent weak transitions
-   *)
   val silent
-    : Sim.ClEnv.env -> Sim.Psi.Inst.assertion -> Sim.Psi.psi
-    -> Tr.weak_transition list
+    : Sim.ClEnv.env -> Sim.Psi.psi -> Tr.weak_transition list
 
-  (**
-   * Compute all the weak transitions with an action
-   *)
-  val action
-    : Sim.ClEnv.env -> Sim.Psi.Inst.assertion -> Sim.Psi.psi
-    -> Tr.weak_transition list
+  val reduceA
+    : Sim.ClEnv.env -> Sim.Psi.psi -> Sim.action_type
+      -> Tr.weak_transition list
 
   sharing Sim.Psi = Tr.Psi
 end;
@@ -89,30 +86,29 @@ struct
     | translateAction (Sim.Tr.Act.Output out) = Tr.Output out
     | translateAction (Sim.Tr.Act.Input  inp) = Tr.Input  inp
 
-  fun silent1 e psi p = [(psi, p, Tr.Silent, [], p)]
-
-  and silent2 e psi p =
+  fun silent e p =
   let
-    val taus = Sim.reduce e psi p |>
-        List.filter (fn (psi,p,Sim.Tr.Act.Tau,c,p'') => true | _ => false)
+    val taus = Sim.reduceA e p Sim.TAUa
+    val tauplus =
+        taus |> Lst.flatmap
+             (fn (p  ,_,c ,p'') => silent e p'' |> map
+                 (fn (p'',_,c',p' ) => (p, Tr.Silent, c @ c', p')))
   in
-    taus |> Lst.flatmap
-        (fn (psi,p  ,_,c ,p'') => silent e psi p'' |> map
-        (fn (psi,p'',_,c',p' ) => (psi, p, Tr.Silent, c @ c', p')))
+      (p, Tr.Silent, [], p)::tauplus
   end
 
-  and silent e psi p =
-    silent1 e psi p @ silent2 e psi p
+  fun action_sym e p ac =
+    (silent e p) |> (Lst.flatmap
+        (fn (p,_,c,p'')         => (Sim.reduceA e p'' ac) |> Lst.flatmap
+          (fn (p'',alpha,c',p''') => (silent e (p''')) |> map
+            (fn (p''',_,c'',p')     =>
+                (p, translateAction alpha, c @ c' @ c'',p')))))
 
-  and action e psi p =
-    (silent e psi p) |> (Lst.flatmap
-        (fn (psi,p,_,c,p'')         => (Sim.reduce e psi p'') |> Lst.flatmap
-        (fn (psi,p'',alpha,c',p''') => (silent e psi (p''')) |> map
-        (fn (psi,p''',_,c'',p')     =>
-            (psi,p,translateAction alpha, c @ c' @ c'',p')))))
+  fun reduceA e p ac = 
+      if ac = Sim.ANYa 
+      then silent e p @ action_sym e p Sim.VISa
+      else action_sym e p ac
 
-
-  and reduce e psi p = silent e psi p @ action e psi p
-
+  fun reduce e p = reduceA e p Sim.ANYa
 end;
 

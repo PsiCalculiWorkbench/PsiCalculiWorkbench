@@ -29,7 +29,7 @@ struct
     text "{" </join/> nest 1 (filledCommaSep (map ppAtom (Nom.support d))) 
              </join/> text "}"
 
-  fun ppFresh _ = empty
+  fun ppFresh _ = PP.empty
 
 end;
 
