@@ -5,12 +5,16 @@ sig
   val withWriteFile : string -> (TextIO.outstream -> unit) -> unit
   val withOpenString: string -> (TextIO.instream -> unit) -> unit
   val printErr : string -> unit
-  val inOutFSytem : (string -> string -> string) -> 
-                    (TextIO.outstream -> unit) -> 
+  val inOutFSytem : (string -> string -> string) ->
+                    (TextIO.outstream -> unit) ->
                     (TextIO.instream -> unit) -> bool
   val dump : string -> string -> unit
   val slurp: string -> string
   val readAll : TextIO.instream -> string
+
+  val readDirAll : string -> string list
+  val readDirFiles : string -> string list
+  val readDirDirs : string -> string list
 end =
 struct
   open OS
@@ -62,7 +66,7 @@ struct
 
   fun dump str fileName = withWriteFile fileName (fn s => TextIO.output (s, str))
 
-  fun readAll' str stream = 
+  fun readAll' str stream =
   let
     val i = TextIO.input stream
   in
@@ -73,7 +77,7 @@ struct
 
   fun readAll stream = readAll' "" stream
 
-  fun slurp fileName = 
+  fun slurp fileName =
   let
     val rs = ref ""
   in
@@ -81,6 +85,34 @@ struct
     !rs)
   end
 
-end;
 
+  fun streamToList obs stream =
+    case obs stream of
+         SOME (x,stream') => x::(streamToList obs stream')
+       | NONE => []
+
+
+  fun readDirAll dir =
+  let
+    val dh = FileSys.openDir dir
+    val dirs = streamToList (fn d => case FileSys.readDir d of
+                                          SOME s => SOME (s,d)
+                                        | NONE => NONE) dh
+    val () = FileSys.closeDir dh
+  in
+    dirs
+  end
+
+  fun readDirFiles dir =
+    List.filter
+        (fn x => not (FileSys.isDir (Path.concat (dir, x))))
+        (readDirAll dir)
+
+
+  fun readDirDirs dir =
+    List.filter
+        (fn x => FileSys.isDir (Path.concat (dir, x)))
+        (readDirAll dir)
+
+end;
 

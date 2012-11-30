@@ -1,8 +1,12 @@
 infixr 0 $
 infix  3 <\
 infix  3 \>
-infixr 3 />
+infix  3 <\\
+infix  3 \\>
 infixr 3 </
+infixr 3 />
+infixr 3 <//
+infixr 3 //>
 infix  1 |>
 
 structure Fun :
@@ -12,10 +16,15 @@ sig
   val callWith: 'a -> ('a -> 'b) -> 'b
   val flip  : ('a -> 'b -> 'c) -> 'b -> 'a -> 'c
   val $     : ('a -> 'b) * 'a -> 'b
-  val <\    : 'a * ('a * 'b -> 'c) -> 'b -> 'c
   val />    : ('a * 'b -> 'c) * 'b -> 'a -> 'c
   val </    : 'a * ('a -> 'b) -> 'b
+  val //>   : ('a -> 'b -> 'c) * 'b -> 'a -> 'c
+  val <//   : 'a * ('a -> 'b) -> 'b
+
+  val <\    : 'a * ('a * 'b -> 'c) -> 'b -> 'c
   val \>    : ('a -> 'b) * 'a -> 'b
+  val <\\    : 'a * ('a -> 'b -> 'c) -> 'b -> 'c
+  val \\>    : ('a -> 'b) * 'a -> 'b
   val |>    : 'a * ('a -> 'b) -> 'b
 end = struct
   fun id x       = x
@@ -28,8 +37,13 @@ end = struct
   (* http://mlton.org/InfixingOperators *)
   fun x <\ f = fn y => f (x, y)     (* Left section      *)
   fun f \> y = f y                  (* Left application  *)
+  fun x <\\ f = fn y => f x y     (* Left section      *)
+  fun f \\> y = f y                  (* Left application  *)
+
   fun f /> y = fn x => f (x, y)     (* Right section     *)
   fun x </ f = f x                  (* Right application *)
+  fun f //> y = fn x => f x y        (* Right section     *)
+  fun x <// f = f x                  (* Right application *)
 
   (* infixing functions with 2-tuple as a domain *)
   (* left associative *)
@@ -60,6 +74,7 @@ sig
   val some       : ('a -> 'b) -> 'a option -> 'b option
   val filterSome : 'a option list -> 'a list
   val maybe      : 'b -> ('a -> 'b) -> 'a option -> 'b
+  val maybeL     : (unit -> 'b) -> ('a -> 'b) -> 'a option -> 'b
   val always     : ('a -> 'b) -> 'a option -> 'b
 
   val bindO : 'a option -> ('a -> 'b option) -> 'b option
@@ -72,6 +87,9 @@ end = struct
   fun maybe _ f (SOME x) = f x
     | maybe x _    NONE  = x
 
+  fun maybeL _ g (SOME x) = g x
+    | maybeL f _ NONE     = f ()
+
   fun always f (SOME x) = f x
     | always _  NONE    = Err.error "Application of 'always' failed."
 
@@ -79,10 +97,10 @@ end = struct
     map (fn (SOME x) => x | _ => raise Match) $
         List.filter (maybe false $ const true) lst
 
-  fun bindO v f =
-    case v of
-         NONE => NONE
-       | SOME x => f x
+  fun bindO v f = maybe NONE f v
+    (*case v of*)
+         (*NONE => NONE*)
+       (*| SOME x => f x*)
 
   fun returnO v = SOME v
   fun errorO x = NONE

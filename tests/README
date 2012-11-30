@@ -1,0 +1,7 @@
+
+To run the tests, issue 'pwb run-tests'. To run a collection of tests which
+have a common prefix, issue 'pwb run-tests prefix'.
+
+To learn how to write tests, see example.ML in this directory or any other test
+file.
+

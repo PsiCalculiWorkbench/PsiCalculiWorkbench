@@ -36,6 +36,7 @@ struct
   val log1 = PwbLog.write "Pwb Uses"
 
 
+  (* filename, canonical name (md5 hash) *)
   type loaded_files = (string * string) list
 
   val loadedFiles : loaded_files ref = ref []

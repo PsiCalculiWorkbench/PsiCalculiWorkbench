@@ -1,9 +1,11 @@
 (* uses pwb/missing,
-        pwb/parser
+        pwb/parser,
+        pwb/pwb-test
  *)
 
 structure ParserExample =
 struct
+  open Missing
   structure P = Parser(StringStream)
 
   val stream = StringStream.make
@@ -21,7 +23,6 @@ struct
   fun symb cs = token (str cs)
 
   fun apply p = space >> p
-
 
 
   val mul = (op * )
@@ -50,8 +51,20 @@ struct
     (symb "*" >> return mul) </choice/>
     (symb "/" >> return fra)
 
+
+  (* setting up the testing framework *)
+  fun testParseResult name p expected =
+    PwbTestRunner.testTrue name 
+        (fn () => p |> Either.either (const false) 
+                       (fn ((x,_)::_) => x = expected | _ => false))
+
+
   val res1 = parse (apply ( expr () )) (stream "1 - 2 * 3 + 4")
+  val t1 = testParseResult "res1" res1 (~1)
+
   val res2 = parse (apply ( expr () )) (stream "((1 - 2) * 3) + 4")
+  val t2 = testParseResult "res2" res2 (1)
+
 
 
   datatype 'a sum = Sum of ('a sum * 'a sum) | N of 'a
@@ -66,9 +79,17 @@ struct
 
   fun sumExprL () = sumDigit () </leftAssocOp1/> sumOp () >>= eof
   val res3 = parse (sumExprL ()) sums
+  (* left associative parsing *)
+  val t3 = testParseResult "res3: left associative" res3 
+    (Sum (Sum (Sum (N 1, N 2), N 3), N 4))
 
   fun sumExprR () = sumDigit () </rightAssocOp1/> sumOp () >>= eof
   val res4 = parse (sumExprR ()) sums
+  val t4 = testParseResult "res4: right associative" res4
+    (Sum (N 1, Sum (N 2, Sum (N 3, N 4))))
 
+
+  val () = PwbTestRunner.registerTests [t1, t2, t3, t4]
 end;
 end;
+

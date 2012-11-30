@@ -12,7 +12,7 @@ function help {
     cat <<END
 Usage: $COMMANDEXEC [-h] [-i] uses/path/spec ...
 
-    -h  prints this help message
+    -h  prints this help message and exits
     -i  lands the SML interpreter into interactive mode
     -o out  compile to the executable file 'out'
 END

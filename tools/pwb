@@ -27,6 +27,7 @@ Command list:
     sml           - an sml implementation wrapper which uses the Uses module system.
     instance-stub - creates a stub file for an instance implementation.
     load-instance - loads an instance.
+    run-tests     - run the pwb tests in the tests/ directory
     help          - print this help message and exit.
     full-list     - additionaly to this help message, prints full list of commands.
 
@@ -56,6 +57,10 @@ case "$COMMAND" in
     sml) 
         export COMMANDEXEC="$0 sml"
         exec "$TOOLSPATH"/sml.sh "$@"
+        ;;
+    run-tests)
+        export COMMANDEXEC="$0 run-tests"
+        exec "$TOOLSPATH"/run-tests.sh "$@"
         ;;
     instance-stub)
         export COMMANDEXEC="$0 instance-stub"

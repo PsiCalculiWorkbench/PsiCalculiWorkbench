@@ -11,4 +11,3 @@ ID(u) <= (new v)(v(x).v(w).'x<w>
 -- checking (weak) bisimilarity of the following takes a bit of time,
 -- the table size is ~ 3000 entries
 -- (new b,bb)('b<b> |'bb<bb> | b(x).bb(x).'u<z>.(new b)('b<b> | b(x))) ~ (new a)('a<z> | a(z).'y<r>);
-
