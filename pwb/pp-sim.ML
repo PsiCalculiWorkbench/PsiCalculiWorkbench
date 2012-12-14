@@ -32,20 +32,24 @@ struct
   end)
   open EPInst
 
+  fun ppRes avec = 
+      if null avec
+      then text " "
+      else
+          text "(\\"
+               </join/> filledCommaSep (map n avec)
+               </join/> text ")"
+
   fun ppAction alpha =
     case alpha of
          Act.Tau => text "tau"
        | Act.Output (y,avec,ms) =>
-           t y </join/>
-                    (if not (null avec)
-                        then
-                                     text "(\\"
-                            </join/> filledCommaSep (map n avec)
-                            </join/> text ")"
-                        else
-                            text " ")
-                  </join/> filledCommaSep (map t ms)
+           t y </join/> ppRes avec </join/> filledCommaSep (map t ms)
        | Act.Input (z,xs) =>
            t z </join/> text "(" </join/> filledCommaSep (map n xs) </join/> text ")"
+       | Act.BrOutput (y,avec,ms) =>
+           t y </join/> text "!" </join/> ppRes avec </join/> filledCommaSep (map t ms)
+       | Act.BrInput (z,xs) =>
+           t z </join/> text "?(" </join/> filledCommaSep (map n xs) </join/> text ")"
 
 end;

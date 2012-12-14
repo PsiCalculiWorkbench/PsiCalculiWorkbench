@@ -182,7 +182,7 @@ struct
        | LEFT [(msg,s)] => (
             print "Syntax Error: "; print (parserFailMsg msg s); print "\n";
             interact ctx (discard s) )
-       | _ => Err.undefined ())
+       | _ => Err.undefined "Command.interactiveStatements.parse default")
 
         handle
         (Err.Error msg) => (output ctx ("Error: " ^ msg); interact ctx (discard stream))
@@ -222,10 +222,12 @@ struct
        | _ => text "==|"
             </join/>
                 (ppAlpha ctx (case alpha of
-                                   WSim.Tr.Tau        => Sim.Tr.Act.Tau
-                                 | WSim.Tr.Input inp  => Sim.Tr.Act.Input inp
-                                 | WSim.Tr.Output out => Sim.Tr.Act.Output out
-                                 | _ => Err.undefined () ) )
+                                   WSim.Tr.Tau          => Sim.Tr.Act.Tau
+                                 | WSim.Tr.Input    inp => Sim.Tr.Act.Input    inp
+                                 | WSim.Tr.Output   out => Sim.Tr.Act.Output   out
+                                 | WSim.Tr.BrInput  inp => Sim.Tr.Act.BrInput  inp
+                                 | WSim.Tr.BrOutput out => Sim.Tr.Act.BrOutput out
+                                 | _ => Err.undefined "Command.ppWAlphasim default" ) )
             </join/> text "|==>"
 
   fun ppPsi ctx psi = PsiPP.a psi
@@ -431,6 +433,8 @@ struct
   fun invocations (Psi.Nil) = []
     | invocations (Psi.Output _) = []
     | invocations (Psi.Input _) = []
+    | invocations (Psi.BrOutput _) = []
+    | invocations (Psi.BrInput _) = []
     | invocations (Psi.Case cs) = List.concat $ map (invocations o snd) cs
     | invocations (Psi.Restriction (_,p)) = invocations p
     | invocations (Psi.Parallel (p,q)) = (invocations p) @ (invocations q)
@@ -650,7 +654,7 @@ struct
             *)
             ( map (fn (subst, psi) =>
                 (psi, alpha, c, RIGHT sol, Psi.subst p' subst ))) sol
-          | _ => Err.undefined ())
+          | _ => Err.undefined "Command.stepAgentC.transitions LEFT")
 
     val n        = List.length transitions
     val nTrans   = zip (enum 1 n) transitions
@@ -824,8 +828,8 @@ struct
     (fn _ =>    case (inputFile ctx n) of
                        RIGHT ((ctx,s)::_) => return ctx
                      | LEFT ((err,s)::_)  => error (parserFailMsg err s)
-                     | RIGHT _ => Err.undefined ()
-                     | LEFT _ => Err.undefined ()
+                     | RIGHT _ => Err.undefined "Command.inputC RIGHT []"
+                     | LEFT  _ => Err.undefined "Command.inputC LEFT []"
     ))
 
 

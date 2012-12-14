@@ -11,8 +11,10 @@ sig
   datatype weak_action
     = Silent
     | Tau
-    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
-    | Input  of Psi.Inst.term * Psi.Inst.name list
+    | Output   of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
+    | Input    of Psi.Inst.term * Psi.Inst.name list
+    | BrOutput of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
+    | BrInput  of Psi.Inst.term * Psi.Inst.name list
 
   type weak_transition
     = Psi.psi * weak_action * Constraint.constraint * Psi.psi
@@ -36,8 +38,10 @@ struct
   datatype weak_action
     = Silent
     | Tau
-    | Output of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
-    | Input  of Psi.Inst.term * Psi.Inst.name list
+    | Output   of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
+    | Input    of Psi.Inst.term * Psi.Inst.name list
+    | BrOutput of Psi.Inst.term * Psi.Inst.name list * Psi.Inst.term list
+    | BrInput  of Psi.Inst.term * Psi.Inst.name list
 
   type weak_transition
     = Psi.psi * weak_action * Constraint.constraint * Psi.psi
@@ -83,8 +87,10 @@ struct
   open Missing
 
   fun translateAction  Sim.Tr.Act.Tau         = Tr.Tau
-    | translateAction (Sim.Tr.Act.Output out) = Tr.Output out
-    | translateAction (Sim.Tr.Act.Input  inp) = Tr.Input  inp
+    | translateAction (Sim.Tr.Act.Output   out) = Tr.Output out
+    | translateAction (Sim.Tr.Act.Input    inp) = Tr.Input  inp
+    | translateAction (Sim.Tr.Act.BrOutput out) = Tr.BrOutput out
+    | translateAction (Sim.Tr.Act.BrInput  inp) = Tr.BrInput  inp
 
   fun silent e p =
   let

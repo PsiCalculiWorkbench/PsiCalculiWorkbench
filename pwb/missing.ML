@@ -58,15 +58,15 @@ local open Fun in
 structure Err :
 sig
   exception Error of string
-  val error     : string -> 'a
-  val undefined : unit -> 'a
+  val error      : string -> 'a
+  val undefined  : string -> 'a
 end
 =
 struct
   exception Error of string
 
-  fun error msg = raise Error msg
-  fun undefined () = error "undefined"
+  fun error     msg = raise Error msg
+  fun undefined msg = raise Error $ "Undefined case: " ^ msg
 end;
 
 structure Opt :
@@ -172,7 +172,7 @@ end = struct
   fun flatmap f l = List.foldr (fn (a,b) => (f a)@b) [] l
   fun flatmapmix f l = 
       List.foldr (fn (a,b) => List.revAppend(b,(f a))) [] l
-  fun reduce f []  = undefined ()
+  fun reduce f []  = undefined "Lst.reduce []"
     | reduce f [a] = a
     | reduce f (x::xs) = List.foldl f x xs
 

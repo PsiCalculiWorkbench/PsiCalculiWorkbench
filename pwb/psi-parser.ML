@@ -182,15 +182,23 @@ in
     (fn (xvec, nvec) =>    return (fn p => Input (m, xvec, nvec, p))
     ))
 
+  and brinput () =
+                           inputSubj () >>=
+    (fn m =>   t "?" >>    inputObj  () >>=
+    (fn (xvec, nvec) =>    return (fn p => BrInput (m, xvec, nvec, p))
+    ))
+
   and output () =
                 t "'" >> nofail $
                 term >>=
-    (fn m =>    t "<" >> term </sepby1/> (t ",") >>=
+    (fn m =>    (t "<" >> term </sepby1/> (t ",") >>=
     (fn nvec => t ">" >>
                 return (fn p => Output (m, nvec, p))))
+    </choice/>  (t "!<" >> term </sepby1/> (t ",") >>=
+    (fn nvec => t ">" >>
+                return (fn p => BrOutput (m, nvec, p)))))
 
-
-  and prefix' () = output () </choice/> input ()
+  and prefix' () = output () </choice/> input () </choice/> brinput ()
   and prefix  () =
                 prefix' () >>=
     (fn p =>    ((t "." >> nofail $

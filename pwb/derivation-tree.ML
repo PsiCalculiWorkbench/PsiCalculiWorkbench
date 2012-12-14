@@ -24,7 +24,7 @@ sig
    *            premise
    *
    *  Given a source try to infer all possible rules for that form. If there
-   *  are no rules that can be inferred gives NONE.
+   *  are no rules that can be inferred gives nil.
    *
    *)
   val infer      : context -> source -> (source list * rule) list

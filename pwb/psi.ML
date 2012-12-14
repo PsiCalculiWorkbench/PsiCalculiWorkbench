@@ -31,6 +31,8 @@ sig
   type assertion = Assr.data
 
   val chaneq     : term * term -> condition
+  val brReceive  : term * term -> condition
+  val brTransmit : term * term -> condition
   val compose    : assertion * assertion -> assertion
   val unit       : assertion
   val entails    : assertion * condition -> bool
@@ -61,8 +63,10 @@ sig
     = Nil
     (* Output (m, n, p) == 'M<Nvec>.P  *)
     | Output      of Inst.term * (Inst.term list) * psi
+    | BrOutput    of Inst.term * (Inst.term list) * psi
     (* Input (m, xvec, n, p) == M(\xvec)Nvec.P *)
     | Input       of Inst.term * (Inst.name list) * (Inst.term list) * psi
+    | BrInput     of Inst.term * (Inst.name list) * (Inst.term list) * psi
     | Case        of (Inst.condition * psi) list
     | Restriction of Inst.name * psi
     | Parallel    of psi * psi
@@ -168,7 +172,9 @@ struct
   end
 
   fun f (Input _)             = unit_frame
+    | f (BrInput _)           = unit_frame
     | f (Output _)            = unit_frame
+    | f (BrOutput _)          = unit_frame
     | f (Case _)              = unit_frame
     | f (Replication _)       = unit_frame
     | f (Assertion a)         = Frame ([], a)
@@ -287,8 +293,10 @@ struct
     = Nil
     (* Output (m, n, p) == 'M<N>.P  *)
     | Output      of term * (term list) * psi
+    | BrOutput    of term * (term list) * psi
     (* Input (m, xvec, n, p) == M(\xvec)N.P *)
     | Input       of term * (name list) * (term list) * psi
+    | BrInput     of term * (name list) * (term list) * psi
     | Case        of (condition * psi) list
     | Restriction of name * psi
     | Parallel    of psi * psi
@@ -331,6 +339,10 @@ struct
     fun swap _  Nil = Nil
       | swap ab (Output (m, nvec , p)) =
           Output (swapT ab m, TL.swap ab nvec, swap ab p)
+      | swap ab (BrOutput (m, nvec , p)) =
+          BrOutput (swapT ab m, TL.swap ab nvec, swap ab p)
+      | swap ab (BrInput (m, xvec, nvec, p)) =
+          BrInput (swapT ab m, L.swap ab xvec, TL.swap ab nvec, swap ab p)
       | swap ab (Input (m, xvec, nvec, p)) =
           Input (swapT ab m, L.swap ab xvec, TL.swap ab nvec, swap ab p)
       | swap ab (Case cases) =
@@ -354,6 +366,8 @@ struct
       | support (Output (m,nvec,p)) = supportT m @ Lst.flatmapmix supportT nvec @ support p
       | support (Input (m,xvec,nvec,p)) =
         supportT m @ Lst.minus (Lst.flatmapmix supportT nvec @ support p) xvec
+      | support (BrOutput (m,nvec,p)) = support (Output (m,nvec,p))
+      | support (BrInput (m,xvec,nvec,p)) = support (Input (m,xvec,nvec,p))
       | support (Case cases) =
         List.concat (map (fn (phi,p) =>
                             supportC phi @ support p) cases)
@@ -371,6 +385,8 @@ struct
 	andalso List.length nvec = List.length nvec' 
 	andalso Lst.all I.Term.eqData (Lst.zip nvec nvec') 
 	andalso eq alphaEq (p,p')
+      | eq alphaEq (BrOutput (m,nvec,p), BrOutput (m',nvec',p')) =
+	eq alphaEq (Output   (m,nvec,p), Output   (m',nvec',p'))
       | eq alphaEq (Input (m,xvec,nvec,p), Input (m',xvec',nvec',p')) =
         List.length xvec = List.length xvec'
         andalso List.length nvec = List.length nvec'
@@ -395,6 +411,8 @@ struct
                      Lst.all I.Term.eqData (Lst.zip n n') 
 		     andalso eq alphaEq (p,p')
                    end)
+      | eq alphaEq (BrInput (m,xvec,nvec,p), BrInput (m',xvec',nvec',p')) =
+	eq alphaEq (Input   (m,xvec,nvec,p), Input   (m',xvec',nvec',p'))
       | eq alphaEq (Case cs, Case cs') =
         caseEq alphaEq cs cs'
       | eq alphaEq (Restriction (a,p), Restriction (a',p')) =
@@ -426,6 +444,8 @@ struct
   fun subst' _ Nil = Nil
     | subst' s (Output (m,nvec,p)) =
         Output (substT s m, map (substT s) nvec, subst' s p)
+    | subst' s (BrOutput (m,nvec,p)) =
+        BrOutput (substT s m, map (substT s) nvec, subst' s p)
     | subst' s (Case cases) =
         Case (map (fn (cond, p) => (substC s cond, subst' s p)) cases)
     | subst' s (Parallel (p, q)) =
@@ -443,7 +463,7 @@ struct
           PA.makeFresh [y] (Restriction (y,p)) (xvec @ tvec) |>
             (fn (Restriction (y,p)) =>
                 Restriction (y, subst' s p)
-              | _ => Err.undefined () )
+              | _ => Err.undefined "Psi.subst' Restriction" )
         end
     | subst' s (inp as (Input (m, xvec, nvec, p))) =
         (* xvec # yvec, tvec *)
@@ -455,8 +475,12 @@ struct
           PA.makeFresh xvec inp (yvec @ tvec @ pvec) |>
              (fn (Input (_, xvec, nvec, p)) =>
                Input (substT s m, xvec, map (substT s) nvec, subst' s p)
-               | _ => Err.undefined ())
+               | _ => Err.undefined "Psi.subst' Input")
         end
+    | subst' s (BrInput args) =
+    (case subst' s (Input args) of
+	   (Input args') => BrInput args'
+         | _             => Err.undefined "Psi.subst' BrInput")
     | subst' s (Invocation (k, mvec)) =
         Invocation (k, map (substT s) mvec)
 
@@ -473,8 +497,12 @@ struct
     | isWellformed (p as (Output (m,nvec,p'))) =
         (lf p $ isWellFormedOutSubj m >>
                 isWellFormedOutObj nvec) >> isWellformed p'
+    | isWellformed (BrOutput args) = 
+      isWellformed (Output args)   (* For now, let's wait until sorts happen. *)
     | isWellformed (p as (Input (m, _, _, p'))) =
         (lf p $ isWellFormedInSubj m) >> isWellformed p'
+    | isWellformed (BrInput args) = 
+      isWellformed (Input args)    (* For now, let's wait until sorts happen. *)
     | isWellformed (p as (Case cnds)) =
         (lf p (bindAll (map (isWellFormedCond o fst) cnds))) >>
          bindAll (map (isWellformed o snd) cnds)

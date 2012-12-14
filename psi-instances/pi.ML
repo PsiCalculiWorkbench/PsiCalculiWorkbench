@@ -12,8 +12,8 @@ struct
   type atom = name
 
   fun chaneq  (a,b)            = Eq (a,b)
-  fun brReceive  (m,n)         = F
-  fun brTransmit (m,n)         = F
+  fun brReceive  (m,n)         = Eq (m,n)
+  fun brTransmit (m,n)         = Eq (m,n)
   fun compose (psi1,psi2)      = Unit
   val unit                     = Unit
   fun entails (Unit,Eq (m, n)) = (m = n)
@@ -107,12 +107,12 @@ struct
     val newBasedOn = newBasedOn
   end)
 
-  fun isWellFormedOutSubj _ = Err.undefined ()
-  fun isWellFormedInSubj  _ = Err.undefined ()
-  fun isWellFormedInvArg  _ = Err.undefined ()
-  fun isWellFormedOutObj  _ = Err.undefined ()
-  fun isWellFormedCond    _ = Err.undefined ()
-  fun isWellFormedAssr    _ = Err.undefined ()
+  fun isWellFormedOutSubj _ = Err.undefined "Pi.isWellFormedOutSubj"
+  fun isWellFormedInSubj  _ = Err.undefined "Pi.isWellFormedInSubj "
+  fun isWellFormedInvArg  _ = Err.undefined "Pi.isWellFormedInvArg "
+  fun isWellFormedOutObj  _ = Err.undefined "Pi.isWellFormedOutObj "
+  fun isWellFormedCond    _ = Err.undefined "Pi.isWellFormedCond   "
+  fun isWellFormedAssr    _ = Err.undefined "Pi.isWellFormedAssr   "
 end;
 
 structure PsiPiInstance = Psi(PiInstanceRequirements)
@@ -155,7 +155,7 @@ struct
             then mgu (Constraint.subst [(b,a)] ((avec, Unit, phis)::cs))
                      (composeSubst sigma (b,a))
             else Either.LEFT [Eq (a,b)]                (*@ $\blacksquare$ @*)
-    | mgu _ _ = Err.undefined ()
+    | mgu _ _ = Err.undefined "Pi.mgu"
 
   fun solve cs =
     case mgu cs [] of
@@ -286,7 +286,7 @@ struct
                      TermEq _ => Either.LEFT c
                    | _ => Either.RIGHT c ) m)
     val eqT = map (fn (TermEq eq) => eq
-                    | _ => Err.error "An undefined case in eqClosure") eq
+                    | _ => Err.undefined "Pi.eqClosure") eq
     val eqCl = eqClosure' eqT
     val eq' = map (fn eq => TermEq eq) eqCl
   in
@@ -340,7 +340,7 @@ struct
         else SOME (l::m)
     | extendM m (l as (Imp (FreshP _, False))) = SOME (l::m)
     | extendM m False = NONE
-    | extendM _ x = (Err.error "An undefined case in extendM")
+    | extendM _ x = (Err.undefined "Pi.extendM")
 
   fun modelRules m =
     [fn l =>
@@ -548,7 +548,7 @@ struct
   fun parseResult p s =
     case Parser.parse p (StringStream.make s) of
          Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined ()
+       | Either.RIGHT _ => Err.undefined "Pi.parseResult RIGHT x::y::zs"
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   fun parseName s = parseResult name s

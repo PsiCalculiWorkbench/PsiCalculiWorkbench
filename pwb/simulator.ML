@@ -15,10 +15,13 @@ sig
     = Tau
     | Output of Inst.term * Inst.name list * Inst.term list
     | Input  of Inst.term * Inst.name list
+    | BrOutput of Inst.term * Inst.name list * Inst.term list
+    | BrInput  of Inst.term * Inst.name list
 
-  val subj : action -> Inst.term
-  val obj  : action -> Inst.term list
-  val bn   : action -> Inst.name list
+  val subj     : action -> Inst.term
+  val obj      : action -> Inst.term list
+  val bn       : action -> Inst.name list
+  val subjSupp : action -> Inst.name list
 
   include NOMINAL
     where type atom = Inst.name
@@ -30,24 +33,34 @@ end;
 functor PsiStrongAction(Inst: PSI_INSTANCE) : PSI_STRONG_ACTION =
 struct
   structure Inst = Inst
+  open Missing
 
   datatype action
     = Tau
     | Output of Inst.term * Inst.name list * Inst.term list
     | Input  of Inst.term * Inst.name list
+    | BrOutput of Inst.term * Inst.name list * Inst.term list
+    | BrInput  of Inst.term * Inst.name list
 
-  fun subj (Output (t, _, _)) = t
-    | subj (Input  (t, _))    = t
-    | subj _                  = Err.undefined ()
+  fun subj (Output (t, _, _))   = t
+    | subj (Input  (t, _))      = t
+    | subj (BrOutput (t, _, _)) = t
+    | subj (BrInput  (t, _))    = t
+    | subj Tau                  = Err.undefined "PsiStrongAction.subj Tau"
 
-  fun obj (Output (_, _, ns)) = ns
-    | obj _                   = Err.undefined ()
+  fun obj (Output (_, _, ns))   = ns
+    | obj (BrOutput (_, _, ns)) = ns
+    | obj _                     = Err.undefined "PsiStrongAction.obj default"
     (* | obj (Input  (_, x))    = x *)
 
-  fun bn (Output (_, ns, _)) = ns
-    | bn (Input  (_, ns))    = ns
-    | bn  Tau                = []
+  fun bn (Output (_, ns, _))   = ns
+    | bn (Input  (_, ns))      = ns
+    | bn (BrOutput (_, ns, _)) = ns
+    | bn (BrInput  (_, ns))    = ns
+    | bn  Tau                  = []
 
+  fun subjSupp Tau   = []
+    | subjSupp alpha = subj alpha |> Inst.Term.support
 
   structure Nom = Nominal(struct
     type atom = Inst.name
@@ -76,15 +89,22 @@ struct
     fun swap _ Tau = Tau
       | swap ab (Output (subj, avec, obj)) =
         Output (T.swap ab subj, L.swap ab avec, TL.swap ab obj)
-      | swap (a,b) (Input (subj, x)) =
-        Input (T.swap (a,b) subj, L.swap (a,b) x)
+      | swap ab (Input (subj, x)) =
+        Input (T.swap ab subj, L.swap ab x)
+      | swap ab (BrOutput (subj, avec, obj)) = 
+	(BrOutput (T.swap ab subj, L.swap ab avec, TL.swap ab obj))
+      | swap ab (BrInput (subj, x)) =
+        BrInput (T.swap ab subj, L.swap ab x)
 
     fun support (Output (m, avec, n)) =
         (T.support m) @ (Lst.minus (TL.support n) avec)
       | support (Input  (m, _)) = T.support m
+      | support (BrOutput (m, avec, n)) =
+        (T.support m) @ (Lst.minus (TL.support n) avec)
+      | support (BrInput  (m, _)) = T.support m
       | support Tau = []
 
-    fun eq aEq (a,b) = Err.error "TODO: define alpha equivalence"
+    fun eq aEq (a,b) = Err.undefined "PsiStrongAction.eq"
   end)
   open Nom
 end;
@@ -143,7 +163,7 @@ struct
     val new = I.Term.new
     val newBasedOn = I.Term.newBasedOn
 
-    fun eq alphaEq ((avec,psi,phi), (avec',psi',phi')) = Err.undefined ()
+    fun eq alphaEq ((avec,psi,phi), (avec',psi',phi')) = Err.undefined "SymbolicOSConstraint.eq"
   end)
 
   structure NA = NominalAlpha(AtomicNom)
@@ -232,6 +252,8 @@ local open P.Psi open P open Missing in
   fun guarded' e v Nil                     = true
     | guarded' e v (Output _)              = true
     | guarded' e v (Input _)               = true
+    | guarded' e v (BrOutput _)            = true
+    | guarded' e v (BrInput _)             = true
     | guarded' e v (Case cs)               = guarded_case e v cs
     | guarded' e v (Restriction (_, p))    = guarded' e v p
     | guarded' e v (Parallel (p, q))       =
@@ -337,13 +359,13 @@ struct
         val obj = case alpha of
                        Tr.Act.Output (_,_,ms) => TL.support ms
                      | _ => []
-      in (T.support (Tr.Act.subj alpha)) @
+      in (Tr.Act.subjSupp alpha) @
          (Lst.minus (obj @ (Tr.Psi.support p)) (Tr.Act.bn alpha))
       end
     val new = Tr.Psi.Inst.Term.new
     val newBasedOn = Tr.Psi.Inst.Term.newBasedOn
 
-    fun eq _ _ = Err.error "Define alpha equivalence for residual"
+    fun eq _ _ = Err.undefined "StrongSymbolicTransitionResidual.eq"
   end)
   open Nom
 end;
@@ -356,7 +378,7 @@ sig
   structure Tr         : STRONG_SYMBOLIC_TRANSITION
   structure ClEnv      : PSI_CLAUSE_ENVIRONMENT
 
-  datatype action_type = ANYa | VISa | OUTa | INa | TAUa
+  datatype action_type = ANYa | VISa | OUTa | INa | BROUTa | BRINa | TAUa
 
   val reduce :
     ClEnv.env -> Psi.psi -> Tr.transition list
@@ -410,6 +432,7 @@ in
   type channeleq = (name list * assertion * term * term)
   datatype suspended_constraint = 
 	   Constr   of constraint
+	 | BrConstr of name list * constraint
 	 | IOConstr of channeleq * constraint
 
 
@@ -429,7 +452,11 @@ in
 
     val swapAtom = P.swapAtom
 
-    fun swap (a,b) (Constr(c)) = Constr(Constraint.swap (a,b) c)
+    fun swap (a,b) (Constr(c)) = 
+	Constr(Constraint.swap (a,b) c)
+      | swap (a,b) (BrConstr(bs, c)) = 
+	BrConstr(L.swap (a,b) bs, 
+		 Constraint.swap (a,b) c)
       | swap (a,b) (IOConstr((bs,psi,m,n), c)) = 
 	IOConstr((L.swap (a,b) bs, 
 		  A.swap (a,b) psi, 
@@ -437,7 +464,8 @@ in
 		  T.swap (a,b) n),
 	 	 Constraint.swap (a,b) c)
 
-    fun support (Constr(c)) = Constraint.support c
+    fun support (Constr(c))      = Constraint.support c
+      | support (BrConstr(_, c)) = Constraint.support c
       | support (IOConstr((bs,psi,m,n), c)) = 
 	(Lst.minus ((T.support n) @ (A.support psi) @ (T.support m)) bs)
 	@ (Constraint.support c)
@@ -448,7 +476,7 @@ in
     val newBasedOn = P.newBasedOn
     val newsBasedOn = P.newsBasedOn
 
-    fun eqData _ = Err.error "TODO: define alpha equivalence"
+    fun eqData _ = Err.undefined "SymbolicPsiSimulator.K.eqData"
   end;
   structure KAlpha = NominalAlpha(K)
 
@@ -462,6 +490,11 @@ in
   fun isInput (Act.Input _) = true
     | isInput _             = false
 
+  fun isBrOutput (Act.BrOutput _) = true
+    | isBrOutput _                  = false
+
+  fun isBrInput (Act.BrInput _) = true
+    | isBrInput _                 = false
 
   val agentBinders = Frame.binders o Frame.f
 
@@ -472,10 +505,10 @@ in
   type symbolic_transition
     = P.psi * Act.action * suspended_constraint * P.psi
 
-  datatype action_type = ANYa | VISa | OUTa | INa | TAUa
+  datatype action_type = ANYa | VISa | OUTa | INa | BROUTa | BRINa | TAUa
 
   datatype symbolic_rules
-    = IN | OUT
+    = IN | OUT | BRIN | BROUT
     | CASE  of condition
     | RES of name
     | PARLEFT
@@ -489,39 +522,52 @@ in
   fun abstractP ns p = List.foldr P.Restriction p ns
 
   fun abstractK ns (Constr(c)) = Constr(Constraint.abstract ns c)
+    | abstractK ns (BrConstr(bs, c)) = 
+      (* What to do if ns and bs intersect? *)
+      BrConstr(bs,Constraint.abstract ns c)
     | abstractK ns (IOConstr((bs,psi,m,n), c)) = 
 	IOConstr((ns@bs,psi,m,n), Constraint.abstract ns c)
 
   fun addCond phi (Constr(c))      = Constr(      Constraint.addCond phi c)
+    | addCond phi (BrConstr(br,c)) = BrConstr(br, Constraint.addCond phi c)
     | addCond phi (IOConstr(io,c)) = IOConstr(io, Constraint.addCond phi c)
 
   fun addFrame fr (Constr(c)) = Constr(Constraint.addFrame fr c)
+    | addFrame fr (BrConstr(bs,c)) = BrConstr(bs,Constraint.addFrame fr c)
     | addFrame (cs,psi') (IOConstr(io as (bs,_,_,_),c)) = 
       case KAlpha.makeFresh bs (IOConstr(io,[])) cs of
 	  IOConstr((bs,psi,m,n),_) =>
 	  IOConstr((cs@bs, I.compose (psi',psi), m,n), 
 	 	   Constraint.addFrame (cs,psi') c)
-	|_ =>  Err.undefined ()
+	|_ =>  Err.undefined "SymbolicPsiSimulator.addFrame makeFresh"
 
   fun swapPremises2 ([a, b], r, d) = ([b, a], r, d)
-    | swapPremises2 _ = Err.undefined ()
+    | swapPremises2 _ = Err.undefined "SymbolicPsiSimulator.swapPremises2"
 
   structure DT =
   struct
-    type source  = (P.psi * action_type)
+    type source  = (P.psi * (action_type list))
     type premise = symbolic_transition
     type rule    = symbolic_rules
     type context = SI.ClEnv.env
 
-    fun inferIN (P.Input _, ANYa) = SOME ([], IN)
-      | inferIN (P.Input _, VISa) = SOME ([], IN)
-      | inferIN (P.Input _, INa)  = SOME ([], IN)
+    fun mem (a:action_type) l = Lst.exists (fn x => x=a) l
+
+    fun inferIN (P.Input _, acts) = 
+        if mem INa acts then SOME ([], IN) else NONE
       | inferIN _ = NONE
 
-    fun inferOUT (P.Output _, ANYa) = SOME ([], OUT)
-      | inferOUT (P.Output _, VISa) = SOME ([], OUT)
-      | inferOUT (P.Output _, OUTa) = SOME ([], OUT)
+    fun inferOUT (P.Output _, acts) = 
+        if mem OUTa acts then SOME ([], OUT) else NONE
       | inferOUT _ = NONE
+
+    fun inferBRIN (P.BrInput _, acts) = 
+        if mem BRINa acts then SOME ([], BRIN) else NONE
+      | inferBRIN _ = NONE
+
+    fun inferBROUT (P.BrOutput _, acts) = 
+        if mem BROUTa acts then SOME ([], BROUT) else NONE
+      | inferBROUT _ = NONE
 
     fun inferRES (P.Restriction (a,p),ac) = SOME ([ (p,ac) ], RES a)
       | inferRES _ = NONE
@@ -533,10 +579,11 @@ in
       | inferREPI _ _ = NONE
 
     fun inferREPCOM e (P.Replication(p), ac) =
-        if ac <> TAUa andalso ac <> ANYa then NONE
-	else if guarded e p
-        then SOME ([(p,INa),(p,OUTa)], REPCOM)
-        else Err.error "Unguarded process under !."
+        if mem TAUa ac then
+	    if guarded e p
+            then SOME ([(p,[INa]),(p,[OUTa])], REPCOM)
+            else Err.error "Unguarded process under !."
+        else NONE
       | inferREPCOM _ _ = NONE
 
     fun inferPARs (P.Parallel (p,q),ac)  =
@@ -544,10 +591,30 @@ in
 	  ([(q,ac)], PARRIGHT) ]
       | inferPARs _ = []
 
+    fun both f (a,b) = (f a, f b)
+
     fun inferCOMs (P.Parallel (p,q), ac) =
-        if ac <> TAUa andalso ac <> ANYa then []
-	else [([ (p,OUTa),(q,INa) ], COMLEFT), 
-	      ([ (p,INa),(q,OUTa) ], COMRIGHT)]
+        (if mem TAUa ac 
+         then [(OUTa,INa,true),(INa,OUTa,false) ]
+         else [])@
+        (if mem BROUTa ac 
+         then [(BROUTa,BRINa,true), (BRINa,BROUTa,false)]
+         else [])@
+        (if mem BRINa ac 
+         then [(BRINa,BRINa,true)]
+         else []) 
+            |>
+        List.foldr
+        (fn ((a,b,c),((l1,l2),(r1,r2))) => 
+                if c
+                then ((a::l1,b::l2),(r1,r2))
+                else ((l1,l2),(a::r1,b::r2)))
+            (([],[]),([],[]))
+        |> both (fn (l1,l2) => [(p,l1),(q,l2)])
+        |> (fn (l,r) => [(l,COMLEFT),(r,COMRIGHT)])
+        |> List.filter (fn (l,_) => 
+              List.all (fn (_,l') =>
+                 not $ List.null l') l)
       | inferCOMs _ = []
 
     fun inferCASEs e (P.Case cs,ac) =
@@ -579,7 +646,7 @@ in
 
     fun infer e a =
     let
-      val rules = [ inferOUT, inferIN, inferRES, inferREPI e, inferREPCOM e ]
+      val rules = [ inferOUT, inferIN, inferBROUT, inferBRIN, inferRES, inferREPI e, inferREPCOM e ]
       val r = (inferPARs a) @ (inferCASEs e a) @ (inferINVOCATIONs e a) @ (inferCOMs a)
       val s = rules |> map (fn rule => rule a) |> Opt.filterSome
     in
@@ -590,32 +657,47 @@ in
 
     fun eval_axiom e (IN, (ip as (P.Input (m, xs, _, p)),_)) =
         (* y # psi, m, p, x   *)
-        let
-          val y = P.new (xs @ (T.support m) @ (P.support p))
-        in
-          SOME ( ip, Act.Input (SI.var y, xs), IOConstr(([], I.unit, m, SI.var y),[]), p)
+        let val y = P.new (xs @ (T.support m) @ (P.support p))
+        in SOME ( ip, Act.Input (SI.var y, xs), 
+		  IOConstr(([], I.unit, m, SI.var y),[]), p)
         end
 
       | eval_axiom e (OUT, (ip as (P.Output (m, ns, p)),_)) =
         (* y # psi, m, p, ns    *)
         let val y = (P.new ((TL.support ns) @ (T.support m) @ (P.support p)))
-        in SOME ( ip, Act.Output (SI.var y, [], ns), IOConstr(([], I.unit, m, SI.var y),[]), p)
+        in SOME ( ip, Act.Output (SI.var y, [], ns), 
+		  IOConstr(([], I.unit, m, SI.var y),[]), p)
         end
-      | eval_axiom _ _ = Err.undefined ()
+      | eval_axiom e (BRIN, (ip as (P.BrInput (m, xs, _, p)),_)) =
+        (* y # psi, m, p, x   *)
+        let val y = P.new (xs @ (T.support m) @ (P.support p))
+        in SOME ( ip, Act.BrInput (SI.var y, xs), 
+		  BrConstr(T.support m,[([], I.unit, [I.brReceive(SI.var y,m)])]), p)
+        end
+
+      | eval_axiom e (BROUT, (ip as (P.BrOutput (m, ns, p)),_)) =
+        (* y # psi, m, p, ns    *)
+        let val y = (P.new ((TL.support ns) @ (T.support m) @ (P.support p)))
+        in SOME ( ip, Act.BrOutput (SI.var y, [], ns), 
+		  BrConstr(T.support m,[([], I.unit, [I.brTransmit(m, SI.var y)])]), p)
+        end
+      | eval_axiom _ _ = Err.undefined "Simulator.eval_axiom default"
 
 
     fun switchSubj (alpha, c) name =
     let
       val alpha' =
         case alpha of
-             Act.Output (_, avec, ns) => Act.Output (name, avec, ns)
-           | Act.Input  (_, xs)       => Act.Input  (name, xs)
-           | _ => Err.error "An undefined case in Simulator.switchSubj 1"
+             Act.Output   (_, avec, ns) => Act.Output   (name, avec, ns)
+           | Act.Input    (_, xs)       => Act.Input    (name, xs)
+         (*| Act.BrOutput (_, avec, ns) => Act.BrOutput (name, avec, ns)
+           | Act.BrInput  (_, xs)       => Act.BrInput  (name, xs) *)
+           | _ => Err.undefined "Simulator.switchSubj 1"
       val c' =
         case c of
              (IOConstr((avec, psi, ms, y),cs)) =>
 	      IOConstr((avec, psi, ms, name),cs)
-           | _ => Err.error "An undefined case in Simulator.switchSubj 2"
+           | _ => Err.undefined "Simulator.switchSubj 2"
     in
       (alpha', c')
     end
@@ -627,16 +709,22 @@ in
           fun permuteL swap pi l = Lst.foldl swap l pi
 
           (* bn(alpha) # Q *)
+	  
           val pi = ResidualAlpha.freshNames (Act.bn alpha) $ 
-                   (T.support (Act.subj alpha))@(P.support q)
+                   (Act.subjSupp alpha)@(P.support q)
           val dP = PAlpha.permute pi dP
           val alpha = case alpha of
                            Act.Tau => Act.Tau
                          | Act.Output (m,avec,ns) =>
-                             Act.Output(m, permuteL L.swap pi avec,
-                                     permuteL TL.swap pi ns)
-                         | Act.Input (m,xs) => Act.Input(m,
-				     permuteL L.swap pi xs)
+                           Act.Output(m, permuteL L.swap pi avec,
+				      permuteL TL.swap pi ns)
+                         | Act.Input (m,xs) => 
+			   Act.Input(m, permuteL L.swap pi xs)
+                         | Act.BrOutput (m,avec,ns) =>
+                           Act.BrOutput(m, permuteL L.swap pi avec,
+					permuteL TL.swap pi ns)
+                         | Act.BrInput (m,xs) => 
+			   Act.BrInput(m, permuteL L.swap pi xs)
 
           val bqvec' = Frame.binders (Frame.f q)
           val pi = FrameAlpha.freshNames bqvec' (P.support p)
@@ -647,19 +735,19 @@ in
         in
           SOME (pq, alpha, addFrame (bqvec,psiQ) c, P.Parallel (dP,q))
         end
-      | evalPAR _ = Err.undefined ()
+      | evalPAR _ = Err.undefined "Simulator.evalPAR default"
 
 
     fun evalCOM ([(iP, oP as Act.Output(_,avec,_), (IOConstr(ioP as (bpvec, psiP, _, _),cp)), dP),
                   (iQ, Act.Input (z, xs),          (IOConstr(ioQ as (bqvec, psiQ, _, _),cq)), dQ)]
                   ,_,
-                  (oPQ,ANYa)) sym =
+                  (oPQ,_)) sym =
 	let
       (* avec # Q *)
       val (avec,ns, dP) =
         case ResidualAlpha.makeFresh avec (oP, dP) (P.support iQ)
          of (Act.Output(_,avec,ns),dp) => (avec,ns,dp)
-          | _ => Err.undefined ()
+          | _ => Err.undefined "Simulator.evalCOM makeFresh"
 
       val pq' = (if sym then Tpl.swap else id) (dP, P.subst dQ (Lst.zip xs ns))
       val pq = abstractP avec (P.Parallel pq')
@@ -669,15 +757,68 @@ in
         (case KAlpha.makeFresh bqvec (IOConstr(ioQ,[])) (bpvec @ (P.support iP)) of
             IOConstr((bvec2, psiQ, n, _),_) => 
 	    (bvec1 @ bvec2, psiP </I.compose/> psiQ, [I.chaneq (m, n)])
-          | _ => Err.undefined ())
-          | _ => Err.undefined ()
+          | _ => Err.undefined "Simulator.evalCOM makeFresh 2")
+          | _ => Err.undefined "Simulator.evalCOM makeFresh 1"
     in
       SOME (oPQ, Act.Tau,
         Constr(c :: Constraint.addFrame (bqvec, psiQ) cp 
                   @ Constraint.addFrame (bpvec, psiP) cq),
           pq)
     end
-      | evalCOM _ _ = Err.undefined ()
+      | evalCOM _ _ = Err.undefined "Simulator.evalCOM default"
+
+
+    fun evalBRCOM ([(iP, oP as Act.BrOutput(_,avec,_), (BrConstr(np,cp)), dP),
+                    (iQ,       Act.BrInput (z, xs),    (BrConstr(nq,cq)), dQ)]
+                  ,_,
+                  (oPQ,_)) sym =
+	let
+      (* avec # Q *)
+      val (ch,avec,ns, dP) =
+        case ResidualAlpha.makeFresh avec (oP, dP) (P.support iQ)
+         of (Act.BrOutput(ch,avec,ns),dp) => (ch,avec,ns,dp)
+          | _ => Err.undefined "Simulator.evalBRCOM makeFresh"
+
+      val (bpvec,psiP) = case Frame.f iP of Frame.Frame f => f
+      val (bqvec,psiQ) = case Frame.f iQ of Frame.Frame f => f
+
+      val pq = P.Parallel $ (if sym then Tpl.swap else id) (dP, P.subst dQ (Lst.zip xs ns))
+    in 
+		
+      SOME (oPQ, Act.BrOutput(ch,avec,ns),
+        BrConstr(Lst.intersection np nq,
+		 Constraint.addFrame (bqvec, psiQ) cp 
+                 @ Constraint.addFrame (bpvec, psiP) cq),
+          pq)
+    end
+      | evalBRCOM _ _ = Err.undefined "Simulator.evalBRCOM default"
+
+    fun swaps p [] = p
+      | swaps p (ab::l) = swaps (P.swap ab p) l
+			 
+    fun unvar n = n |> T.support |> List.hd
+
+    fun evalBRMERGE ([(iP, oP as Act.BrInput(x,xs), (BrConstr(np,cp)), dP),
+                      (iQ,       Act.BrInput(y,ys), (BrConstr(nq,cq)), dQ)]
+                  ,_,
+                  (oPQ,_)) =
+	let
+      val (ch, ns, dP') =
+        case ResidualAlpha.makeFresh ((T.support x)@xs) (oP, dP) (P.support iQ)
+         of (Act.BrInput(ch,ns),dp) => (ch,ns,dp)
+          | _ => Err.undefined "Simulator.evalBRMERGE makeFresh"
+
+      val (bpvec,psiP) = case Frame.f iP of Frame.Frame f => f
+      val (bqvec,psiQ) = case Frame.f iQ of Frame.Frame f => f
+      val pq = P.Parallel(dP', swaps dQ (Lst.zip ys ns))
+    in
+      SOME (oPQ, Act.BrInput(ch,xs),
+        BrConstr(Lst.intersection np nq,
+		 Constraint.addFrame (bqvec, psiQ) cp 
+                 @ Constraint.addFrame (bpvec, psiP) (Constraint.swap (unvar ch, unvar y) cq)),
+          pq)
+    end
+      | evalBRMERGE _ = Err.undefined "Simulator.evalBRMERGE default"
 
 
     fun evalREPCOM ([(p1, alpha1 as Act.Output (y, avec, ns),
@@ -685,7 +826,7 @@ in
                      (p2, Act.Input (z, xs),
                             (IOConstr(c2 as (bvec2, _, _, _),cs2)), dP2)],
                     REPCOM,
-                    (p,ANYa)) sym =
+                    (p,_)) sym =
     let
       val sw = if sym then Tpl.swap else id
       val (alpha1, dP1) =
@@ -696,18 +837,18 @@ in
         (case KAlpha.makeFresh bvec2 (IOConstr(c2,[])) (bvec1 @ (P.support p1)) of
             IOConstr((bvec2, _, n, _),_) => (* frame of p1=p2 is equivalent to I.unit. *)
 	     Constr((bvec1 @ bvec2, I.unit, [I.chaneq (m, n)]) :: (cs1 @ cs2))
-          | _ => Err.undefined ())
-          | _ => Err.undefined ()
+          | _ => Err.undefined "Simulator.evalREPCOM makeFresh 2")
+          | _ => Err.undefined "Simulator.evalREPCOM makeFresh 1"
       val (xs,dP2) =
         case ResidualAlpha.makeFresh xs (Act.Input(z,xs), dP2) (P.support p) of
 	    (Act.Input(_,xs), dP2) => (xs,dP2)
-          | _ => Err.undefined ()
+          | _ => Err.undefined "Simulator.evalREPCOM makeFresh 3"
       val dP = abstractP avec $ P.Parallel $ 
 		sw (dP1, P.subst (P.Parallel (dP2, p)) (Lst.zip xs ns))
     in
         SOME (p, Act.Tau, c, dP)
     end
-      | evalREPCOM _ _ = Err.undefined ()
+      | evalREPCOM _ _ = Err.undefined  "Simulator.evalREPCOM default"
 
 
     fun eval e (premises as [(iP, alpha, c, dP)], PARLEFT,  (P.Parallel (p, q),_)) =
@@ -717,22 +858,32 @@ in
         Opt.some
             (fn (P.Parallel(q,p), alpha, c, P.Parallel(dq,dp)) =>
                 (P.Parallel(p,q), alpha, c, P.Parallel(dp,dq))
-              | _ => Err.error "Impossible case in Simulator.eval PAR RIGHT")
+              | _ => Err.undefined "Simulator.eval PAR RIGHT")
             (evalPAR (premises, (P.Parallel (q, p))))
 
-      | eval e (r as ([(_,Act.Output(_,_,ns),_,_), (_,Act.Input(_,xs),_,_)], COMLEFT, (oPQ, ANYa))) = 
+      | eval e (r as ([(_,Act.Output(_,_,ns),_,_), (_,Act.Input(_,xs),_,_)], COMLEFT, (oPQ, _))) = 
         if List.length ns <> List.length xs then NONE else evalCOM r false
+
+      | eval e (r as ([(_,Act.BrOutput(_,_,ns),_,_), (_,Act.BrInput(_,xs),_,_)], COMLEFT, (oPQ, _))) = 
+        if List.length ns <> List.length xs then NONE else evalBRCOM r false
+
+      | eval e (r as ([(_,Act.BrInput(_,ns),_,_), (_,Act.BrInput(_,xs),_,_)], COMLEFT, (oPQ, _))) = 
+        if List.length ns <> List.length xs then NONE else evalBRMERGE r
 
       | eval e (_, COMLEFT, _) = NONE
 
-      | eval e (r as ([(_,Act.Input(_,xs),_,_), (_,Act.Output(_,_,ns),_,_)], COMRIGHT, (oPQ, ANYa))) = 
+      | eval e (r as ([(_,Act.Input(_,xs),_,_), (_,Act.Output(_,_,ns),_,_)], COMRIGHT, (oPQ, _))) = 
         if List.length ns <> List.length xs then NONE else evalCOM (swapPremises2 r) true
+
+      | eval e (r as ([(_,Act.BrInput(_,xs),_,_), (_,Act.BrOutput(_,_,ns),_,_)], COMRIGHT, (oPQ, _))) = 
+        if List.length ns <> List.length xs then NONE else evalBRCOM (swapPremises2 r) true
+
       | eval e (_, COMRIGHT, _) = NONE
 
       | eval e ([(iP, alpha, c, dP)], RES a, (cP as (P.Restriction (_, p)),_)) =
         if isTau alpha orelse Act.fresh a alpha then
             SOME (cP, alpha, abstractK [a] c, P.Restriction(a,dP)) (* SCOPE *)
-        else if not $ T.fresh a (Act.subj alpha)
+        else if Lst.member a (Act.subjSupp alpha)
 	then let val (alpha, c) = switchSubj (alpha, c) $
 				  SI.var $ L.newBasedOn a (a :: K.support c)
              in SOME (cP, alpha, abstractK [a] c, P.Restriction(a,dP))
@@ -742,14 +893,17 @@ in
 		  if Lst.member a (TL.support ns)
 		  then SOME (cP, Act.Output (y, (a :: a_s), ns), abstractK [a] c, dP)
 		  else NONE
+		| Act.BrOutput (y, a_s, ns) =>
+		  if Lst.member a (TL.support ns)
+		  then SOME (cP, Act.BrOutput (y, (a :: a_s), ns), abstractK [a] c, dP)
+		  else NONE
 		|_=>NONE) 	(* What to do if a is an input variable? *)
       | eval e (_, RES _, _) = NONE
 
       (* TODO: clear this with Magnus *)
       | eval e ([(iP, alpha, c, dP)], CASE cond, (cases,_)) =
         let
-            val sbj = if isTau alpha then [] else T.support $ Act.subj alpha
-            val n = L.new (sbj @ C.support cond @ K.support c)
+            val n = L.new ((Act.subjSupp alpha) @ C.support cond @ K.support c)
             val (alpha, c) = if isTau alpha
                              then (alpha,c)
                              else switchSubj (alpha,c) (SI.var n)
@@ -766,7 +920,7 @@ in
 
       | eval e ([(ps, alpha, c, dP)], INVOCATION, (amvec,_)) = SOME (amvec, alpha, c, dP)
 
-      | eval _ _ = Err.error "Unhandled case in Simulator.eval"
+      | eval _ _ = Err.undefined "Simulator.eval default"
 
   end; (* END : DT *)
 
@@ -774,12 +928,17 @@ in
 
 
   fun advance (IOConstr((bs,psi,m,n), c)) = (bs, psi, [I.chaneq(m, n)])::c
+    | advance (BrConstr(_, c)) = c
     | advance (Constr(c)) = c
 
 
   fun reduceA e p ac =
   let
-    val tree = D.eval_all e (p,ac)
+    val ac' = case ac of
+                  ANYa => [INa,OUTa,BRINa,BROUTa,TAUa]
+                | VISa => [INa,OUTa,BRINa,BROUTa]
+                | _    => [ac]
+    val tree = D.eval_all e (p,ac')
     val tr  = map (fn (D.EInf (_,_,conclusion)) => conclusion) tree
     val tr' = map (fn (p, alpha, c, p') => (p,alpha, advance c, p')) tr
   in

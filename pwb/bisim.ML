@@ -166,7 +166,7 @@ struct
           (NA.makeFresh avec (Atomic (avec, psi, phi)) sigmaNames) |>
           (fn (Atomic (avec, psi, phi)) =>
             Atomic (avec, substA sigma psi, substC sigma phi)
-            | _ => Err.undefined ())
+            | _ => Err.undefined "SymBisimConstraint.Nom.subst Atomic")
         end
     | subst (Forall (x,c)) sigma =
         (let
@@ -512,9 +512,9 @@ struct
                 ([y] @ supP @ supQ @ supC @ (C.support cpi))) |>
                 (fn (WSim.Sim.Tr.Act.Output (_, avec, n), pi) =>
                     ((y, avec, n), cpi, pi)
-                  | _ => Err.undefined ())
+                  | _ => Err.undefined "Bisim.matchOut makeFresh")
             end
-          | _ => Err.undefined ())
+          | _ => Err.undefined "Bisim.matchOut default")
 
     val (cvec, tvec) = ListPair.unzip $ map (fn ((y,avec,ns), cpi, pi) =>
         let
@@ -526,7 +526,7 @@ struct
                 ((y, avec, List.map (permute Psi.Inst.Term.swap (zip avec cvec)) ns'),
                  C.swap (unvar z, y) (translateC cqj),
                  permute Psi.swap (zip avec cvec) qj)
-              | _ => Err.undefined () )
+              | _ => Err.undefined "Bisim.matchOut default 2" )
           val (civec,tivec) = ListPair.unzip $ map (fn ((z,cvec,ns'),cqj,qj) =>
             let
               val (cij,tij) =
@@ -566,12 +566,12 @@ struct
            val pi= List.foldr folder pi (Lst.zip xs xs')
          in
            ((y, xs), cpi, pi)
-         end | _ => Err.undefined () )
+         end | _ => Err.undefined "Bisim.matchIn default" )
     val (cvec,tvec) = ListPair.unzip (map (fn ((y,xs), cpi, pi) =>
         let
           val qtr = weakIn env q |> map (fn (q,WSim.Tr.Input (z,xs'),cqj,qj) =>
             ((y, xs), C.swap (y,unvar z) (translateC cqj), List.foldr folder qj $ Lst.zip xs xs')
-            | _ => Err.undefined () )
+            | _ => Err.undefined "Bisim.matchIn default 2" )
           val (civec,tivec) = ListPair.unzip (map (fn ((z,x),cqj,qj) =>
             let
               val (cij,tij) =

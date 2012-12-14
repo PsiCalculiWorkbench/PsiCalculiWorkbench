@@ -120,10 +120,8 @@ in
   fun enclose a doc b =
     text a </join/> doc </join/> text b
 
-  fun isTupleInput (Input (_, xs, xs', _)) =
-    maybe false (fn v => Lst.all Psi.Inst.Term.eqData (Lst.zip (List.map v xs) xs')) var
-    | isTupleInput _ = false
-
+  fun isTupleInput xs ns =
+      maybe false (fn v => Lst.all Psi.Inst.Term.eqData (Lst.zip (List.map v xs) ns)) var
 
   fun dot (a,p) =
     a </join/>
@@ -131,20 +129,25 @@ in
               Nil => empty
             | _ => text "." </join/>
                     nestIndent (line </join/> (print' p)))
-
+  and printInArgs xs ns = 
+      if isTupleInput xs ns
+      then enclose "(" (commaSep (map n xs)) ")"
+      else enclose "(\\" (commaSep (map n xs)) ")"
+                   </join/> (commaSep (map t ns))
+      
   and print' Nil = text "0"
     | print' (Output (m, ns, p)) =
         group $
         text "'" </join/> t m </join/>
             (enclose "<" (commaSep (map t ns)) ">") </dot/> p
-    | print' (inp as Input (m, xvec, nn, p)) =
+    | print' (BrOutput (m, ns, p)) =
         group $
-        t m  </join/>
-            (if isTupleInput inp
-                then enclose "(" (commaSep (map n xvec)) ")"
-                else enclose "(\\" (commaSep (map n xvec)) ")"
-                </join/> (commaSep (map t nn)) )
-                </dot/> p
+        text "'" </join/> (t m) </join/> text "!" </join/> 
+            (enclose "<" (commaSep (map t ns)) ">") </dot/> p
+    | print' (Input (m, xvec, nn, p)) =
+        group $ t m  </join/> printInArgs xvec nn </dot/> p
+    | print' (BrInput (m, xvec, nn, p)) =
+        group $ t m  </join/> text "?" </join/> printInArgs xvec nn </dot/> p
     | print' (Case cs) =
         let
           fun printCaseClause (cond,p) =

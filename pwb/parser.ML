@@ -108,7 +108,7 @@ struct
     case parse p s of
          LEFT ((Fail e, s)::_) => LEFT [(Error e, s)]
        | LEFT ((Error e, s)::_) => LEFT [(Error e, s)]
-       | LEFT _ => Err.error "Undefined case in Parser.nofail"
+       | LEFT _ => Err.undefined "Parser.nofail LEFT []"
        | RIGHT r => RIGHT r)
 
   fun p >>= f  = Parser (fn s =>
@@ -154,7 +154,7 @@ struct
     in
       case pres of
            RIGHT (r::_) => RIGHT [r]
-         | RIGHT [] => Err.error "Undefined case in Parser.choice"
+         | RIGHT [] => Err.undefined "Parser.choice RIGHT []"
          | LEFT fs => case findError fs of
                            NONE => qres ()
                          | SOME err => LEFT [err]
@@ -202,7 +202,7 @@ struct
            either
             LEFT
             (fn ((i,s)::_) => until' p s (i::a)
-              | _ => Err.undefined ())
+              | _ => Err.undefined "Parser.until' []")
            (parse item s)
 
   fun until p = Parser (fn s => until' p s [])
@@ -216,7 +216,7 @@ struct
   fun try p = Parser (fn s =>
     case parse p s of
          RIGHT ((a,_)::_) => RIGHT [(a,s)]
-       | RIGHT _ => Err.undefined ()
+       | RIGHT _ => Err.undefined "Parser.try RIGHT []"
        | LEFT err => LEFT err
        )
 
