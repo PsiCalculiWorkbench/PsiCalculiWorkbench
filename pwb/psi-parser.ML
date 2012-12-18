@@ -164,15 +164,13 @@ in
   and inputObjAbr () =
                 t "(" >>
                 name </sepby1/> (t ",") >>=
-    (fn x =>    nofail $
-                t ")" >>
-                return x >>=
-    (fn x =>    case A.Req.var of
+    (fn x =>    nofail $ t ")" >>
+                (case A.Req.var of
                      NONE => Parser.error
                         ("Abbreviated form of Input is not supported" ^
                          " by the instance!")
-                   | SOME v => return (x, List.map v x)
-    ))
+                   | SOME v => return (x, List.map v x))
+    )
 
   and inputObj () = inputObjFull () </choice/> inputObjAbr ()
 

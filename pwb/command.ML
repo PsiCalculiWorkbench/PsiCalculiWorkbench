@@ -804,7 +804,7 @@ struct
     []
 
   and statement (ctx : command_state) =
-    List.foldl choice zero (map (fn c => c ctx) (commands ()))
+    List.foldr choice zero (map (fn c => c ctx) (commands ()))
 
   and inputFile ctx n =
   let
