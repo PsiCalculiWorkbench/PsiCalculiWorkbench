@@ -434,7 +434,7 @@ struct
 
   fun translateC []    = True
     | translateC cstrs = 
-      Lst.reduce Conj $	Lst.flatmapmix translateOne cstrs
+      Lst.reduce Conj $ Lst.flatmapmix translateOne cstrs
 
   fun collectCstrDeriv trs =
     map (fn (p,alpha,c,p') => (translateC c, p')) trs
@@ -532,7 +532,7 @@ struct
               val (cij,tij) =
                 close env
                       (pi,qj)
-		      (Lst.reduce Conj (Lst.zipwith TermEq ns ns') </Conj/>
+                      (Lst.reduce Conj (Lst.zipwith TermEq ns ns') </Conj/>
                         (c </Conj/> cpi </Conj/> cqj </Conj/>
                           freshness avec p </Conj/> freshness avec q))
                       ((p,q)::w)
