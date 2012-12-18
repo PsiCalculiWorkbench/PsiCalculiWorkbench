@@ -950,37 +950,6 @@ in
   fun debugTree p =
     D.eval_all ClEnv.empty p
 
-                    (*
-  fun valid_trees tree =
-    List.filter
-        (fn (D.EInf (_,_,(psi,iP,alpha,constraint,dP)))
-                => Either.either
-                    (const false)
-                    (const true) $ solve $ advance constraint) tree
-
-
-  fun reduce e agent =
-  let
-    val t = D.eval_all e (I.unit, agent)
-    val valid = valid_trees t
-    val agents = map (fn (D.EInf (_,_,(_,_,_,_,p))) => p) valid
-  in
-    agents
-  end
-
-  fun solve_transitions tree =
-    List.partition (fn (_,_,_,RIGHT _,_) => true | _ => false) $
-    map (fn (D.EInf (_,_,(psi,iP,alpha,sc,dP))) =>
-            let val constraint = advance sc in
-            (psi, alpha, constraint, solve constraint, dP) end) tree
-
-  fun symbolic_reduce e agent =
-    solve_transitions $ D.eval_all e (I.unit, agent)
-
-  fun symbolic_reduce_psi e psi agent =
-    solve_transitions $ D.eval_all e (psi, agent)
-
-  *)
 
 end;
 end;
