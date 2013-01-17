@@ -1,0 +1,33 @@
+
+
+Node(nodeId, nodeChan, datum) <=
+    "init(nodeId)"?(x,chan).             -- listen for channel, chan, to transmit data to
+    '"init(nodeId)"!<nodeId, nodeChan>.  -- broadcast own channel for forwarding data
+    '"data(chan)"<datum> .               -- send own data
+    NodeForwardData<nodeChan, chan> ;
+
+NodeForwardData(nodeChan, chan) <=
+    ! "data(nodeChan)"(x). '"data(chan)"<x>  ;
+
+
+BS(nodeId, bsChan) <=
+    '"init(nodeId)"!<nodeId, bsChan> . BSCollect<bsChan> ;
+
+BSCollect(bsChan) <=
+    ! "data(bsChan)"(x) ;
+
+
+System3(d1,d2) <=
+    (new bsChan)    BS<0, bsChan>       |
+    (new chan1)     Node<1, chan1, d1>  |
+    (new chan2)     Node<2, chan2, d2>
+;
+
+System5(d1,d2,d3,d4) <=
+    (new bsChan)    BS<0, bsChan>       |
+    (new chan1)     Node<1, chan1, d1>  |
+    (new chan2)     Node<2, chan2, d2>  |
+    (new chan3)     Node<3, chan3, d3>  |
+    (new chan4)     Node<4, chan4, d4>
+;
+

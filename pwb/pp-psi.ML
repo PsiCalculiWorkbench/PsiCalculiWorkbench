@@ -136,6 +136,9 @@ in
                    </join/> (commaSep (map t ns))
       
   and print' Nil = text "0"
+    | print' (Tau p) =
+        group $
+            text "*tau*" </sp/> text "." </sp/> print' p
     | print' (Output (m, ns, p)) =
         group $
         text "'" </join/> t m </join/>

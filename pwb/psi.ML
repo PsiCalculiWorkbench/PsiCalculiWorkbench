@@ -61,6 +61,7 @@ sig
 
   datatype psi
     = Nil
+    | Tau         of psi
     (* Output (m, n, p) == 'M<Nvec>.P  *)
     | Output      of Inst.term * (Inst.term list) * psi
     | BrOutput    of Inst.term * (Inst.term list) * psi
@@ -171,7 +172,8 @@ struct
     Frame (avecA @ avecB, P.Inst.compose (psiA, psiB))
   end
 
-  fun f (Input _)             = unit_frame
+  fun f (Tau _)               = unit_frame
+    | f (Input _)             = unit_frame
     | f (BrInput _)           = unit_frame
     | f (Output _)            = unit_frame
     | f (BrOutput _)          = unit_frame
@@ -291,6 +293,7 @@ struct
 
   datatype psi
     = Nil
+    | Tau         of psi
     (* Output (m, n, p) == 'M<N>.P  *)
     | Output      of term * (term list) * psi
     | BrOutput    of term * (term list) * psi
@@ -337,7 +340,8 @@ struct
     structure TL = NominalList(I.Term)
 
     fun swap _  Nil = Nil
-      | swap ab (Output (m, nvec , p)) =
+      | swap ab (Tau p) = Tau (swap ab p)
+      | swap ab (Output (m, nvec, p)) =
           Output (swapT ab m, TL.swap ab nvec, swap ab p)
       | swap ab (BrOutput (m, nvec , p)) =
           BrOutput (swapT ab m, TL.swap ab nvec, swap ab p)
@@ -363,6 +367,7 @@ struct
 
 
     fun support Nil = []
+      | support (Tau p) = support p
       | support (Output (m,nvec,p)) = supportT m @ Lst.flatmapmix supportT nvec @ support p
       | support (Input (m,xvec,nvec,p)) =
         supportT m @ Lst.minus (Lst.flatmapmix supportT nvec @ support p) xvec
@@ -442,6 +447,7 @@ struct
   structure PA = NominalAlpha(Nom)
 
   fun subst' _ Nil = Nil
+    | subst' s (Tau p) = Tau (subst' s p)
     | subst' s (Output (m,nvec,p)) =
         Output (substT s m, map (substT s) nvec, subst' s p)
     | subst' s (BrOutput (m,nvec,p)) =
@@ -494,6 +500,7 @@ struct
   fun bindAll es = foldr (op>>) (returnE "OK") es
 
   fun isWellformed Nil = returnE "OK"
+    | isWellformed (Tau p) = isWellformed p
     | isWellformed (p as (Output (m,nvec,p'))) =
         (lf p $ isWellFormedOutSubj m >>
                 isWellFormedOutObj nvec) >> isWellformed p'

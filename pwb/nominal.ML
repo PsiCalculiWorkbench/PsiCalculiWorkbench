@@ -1,15 +1,10 @@
 (* uses pwb/missing, pwb/sort *)
 
-signature NOMINAL =
+
+signature UNSORTED_NOMINAL =
 sig
   eqtype atom
   type   data
-
-  structure AtomSort: SORT
-  structure DataSort: SORT
-
-  val atomSort  : atom -> AtomSort.sort
-  val dataSort  : data -> DataSort.sort
 
   val new         : atom list -> atom
   val newBasedOn  : atom -> atom list -> atom
@@ -21,6 +16,28 @@ sig
   val fresh     : atom -> data -> bool
 
   val eqData    : data * data -> bool
+end;
+
+
+signature NOMINAL =
+sig
+  include UNSORTED_NOMINAL
+
+  structure AtomSort: SORT
+  structure DataSort: SORT
+
+  val atomSort  : atom -> AtomSort.sort
+  val dataSort  : data -> DataSort.sort
+end;
+
+
+functor UnsortedToTrivialySortedNominal(N: UNSORTED_NOMINAL): NOMINAL =
+struct
+  open N
+  structure AtomSort = Unsorted
+  structure DataSort = Unsorted
+  fun atomSort _ = Unsorted.SORT
+  fun dataSort _ = Unsorted.SORT
 end;
 
 
@@ -64,10 +81,10 @@ struct
   val support     = N.support
   val new         = N.new
   val newBasedOn  = N.newBasedOn
-  
-  fun NBOhelper (x,(acc,nos)) = 
-      let 
-	  val y = (N.newBasedOn x nos) 
+
+  fun NBOhelper (x,(acc,nos)) =
+      let
+	  val y = (N.newBasedOn x nos)
       in (y::acc,y::nos)
       end
   fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
@@ -119,9 +136,9 @@ struct
   val new       = N.new
   val newBasedOn = N.newBasedOn
 
-  fun NBOhelper (x,(acc,nos)) = 
-      let 
-	  val y = (N.newBasedOn x nos) 
+  fun NBOhelper (x,(acc,nos)) =
+      let
+	  val y = (N.newBasedOn x nos)
       in (y::acc,y::nos)
       end
   fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
@@ -147,9 +164,9 @@ struct
   val new       = N.new
   val newBasedOn= N.newBasedOn
 
-  fun NBOhelper (x,(acc,nos)) = 
-      let 
-	  val y = (N.newBasedOn x nos) 
+  fun NBOhelper (x,(acc,nos)) =
+      let
+	  val y = (N.newBasedOn x nos)
       in (y::acc,y::nos)
       end
   fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
@@ -179,9 +196,9 @@ struct
   val new       = A.new
   val newBasedOn= A.newBasedOn
 
-  fun NBOhelper (x,(acc,nos)) = 
-      let 
-	  val y = (A.newBasedOn x nos) 
+  fun NBOhelper (x,(acc,nos)) =
+      let
+	  val y = (A.newBasedOn x nos)
       in (y::acc,y::nos)
       end
   fun newsBasedOn xs os = Tpl.fst (List.foldr NBOhelper ([],os) xs)
@@ -204,10 +221,10 @@ end) : NOMINAL = NominalList (NominalName (N));
 
 functor NominalAlpha(N: NOMINAL):
 sig
-  val makeFresh  : N.atom list -> 
+  val makeFresh  : N.atom list ->
                    N.data -> N.atom list -> N.data
   val permute    : (N.atom * N.atom) list -> N.data -> N.data
-  val freshNames : N.atom list -> 
+  val freshNames : N.atom list ->
                    N.atom list -> (N.atom * N.atom) list
 end =
 struct
@@ -227,7 +244,7 @@ struct
       let val n = N.newBasedOn d supp
       in genPI ((d,n)::pi) dirty (n::supp)
       end
- 
+
     val pi = genPI [] dirty support
   in
     pi

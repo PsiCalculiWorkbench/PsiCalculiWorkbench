@@ -433,6 +433,7 @@ struct
   fun invocations (Psi.Nil) = []
     | invocations (Psi.Output _) = []
     | invocations (Psi.Input _) = []
+    | invocations (Psi.Tau _) = []
     | invocations (Psi.BrOutput _) = []
     | invocations (Psi.BrInput _) = []
     | invocations (Psi.Case cs) = List.concat $ map (invocations o snd) cs

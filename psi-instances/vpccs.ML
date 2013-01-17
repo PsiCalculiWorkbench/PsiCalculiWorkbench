@@ -1,4 +1,4 @@
-(* uses pwb/constraint-solvers/ilp
+(* uses pwb/workbench, pwb/constraint-solvers/ilp
  *)
 
 
@@ -55,7 +55,7 @@ struct
     | evalExp (e as (ExpBool bexp)) =
         evalBExp bexp |> either (LEFT o const e) RIGHT
     | evalExp (ExpVal v) = RIGHT v
-    | evalExp _ = Err.undefined ()
+    | evalExp _ = Err.undefined ""
 
   and evalBExp (e as (BoolEq (a,b))) =
     (case (evalExp a, evalExp b) of
@@ -146,8 +146,8 @@ struct
 
   fun substA s phi = ()
 
-  fun brTransmit (m,n) = Err.undefined ()
-  fun brReceive (m,n) = Err.undefined ()
+  fun brTransmit (m,n) = Err.undefined ""
+  fun brReceive (m,n) = Err.undefined ""
 
 
   structure Sort = struct
@@ -215,12 +215,12 @@ struct
     val newBasedOn=newBasedOn
   end)
 
-  fun isWellFormedOutSubj _ = Err.undefined ()
-  fun isWellFormedInSubj  _ = Err.undefined ()
-  fun isWellFormedInvArg  _ = Err.undefined ()
-  fun isWellFormedOutObj  _ = Err.undefined ()
-  fun isWellFormedCond    _ = Err.undefined ()
-  fun isWellFormedAssr    _ = Err.undefined ()
+  fun isWellFormedOutSubj _ = Err.undefined "Pi.isWellFormedOutSubj"
+  fun isWellFormedInSubj  _ = Err.undefined "Pi.isWellFormedInSubj "
+  fun isWellFormedInvArg  _ = Err.undefined "Pi.isWellFormedInvArg "
+  fun isWellFormedOutObj  _ = Err.undefined "Pi.isWellFormedOutObj "
+  fun isWellFormedCond    _ = Err.undefined "Pi.isWellFormedCond   "
+  fun isWellFormedAssr    _ = Err.undefined "Pi.isWellFormedAssr   "
 end;
 
 
@@ -359,7 +359,7 @@ struct
 
 
 
-  fun solveBisim cs       = Err.undefined ()
+  fun solveBisim cs       = Err.undefined ""
 end;
 
 
@@ -500,7 +500,7 @@ struct
   fun parseResult p s =
     case Parser.parse (p ()) (StringStream.make s) of
          Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined ()
+       | Either.RIGHT _ => Err.undefined ""
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   fun parseName s = parseResult name s

@@ -151,6 +151,8 @@ in
 
   fun nill () = t "0" >> return Nil
 
+  and tau () = t "*tau*" >> return Tau
+
   and inputSubj () = ws >> term
 
   and inputObjFull () =
@@ -196,7 +198,7 @@ in
     (fn nvec => t ">" >>
                 return (fn p => BrOutput (m, nvec, p)))))
 
-  and prefix' () = output () </choice/> input () </choice/> brinput ()
+  and prefix' () = tau () </choice/> output () </choice/> input () </choice/> brinput ()
   and prefix  () =
                 prefix' () >>=
     (fn p =>    ((t "." >> nofail $
