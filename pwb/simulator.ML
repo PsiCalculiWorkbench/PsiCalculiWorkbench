@@ -133,6 +133,8 @@ sig
   val addCond  : Inst.condition                    -> constraint -> constraint
   val abstract : Inst.name list                    -> constraint -> constraint
   val compose  : constraint                        -> constraint -> constraint
+
+  val unit : constraint
 end;
 
 
@@ -144,6 +146,8 @@ struct
 
   type atomic = Inst.name list * Inst.assertion * Inst.condition list
   type constraint = atomic list
+
+  val unit = []
 
   open Missing
 
@@ -220,19 +224,18 @@ signature SYMBOLIC_CONSTRAINT_SOLVER =
 sig
   structure Inst       : PSI_INSTANCE
   structure Constraint : SYMBOLIC_TRANSITION_CONSTRAINT
+  sharing Constraint.Inst = Inst
 
   (* If constraint can't be solved, returns LEFT with a list of unsolvable
    * conditions. If constraint can be solved then returns RIGHT with solutions
    *)
-  val solve :
-    Constraint.constraint ->
+  type solution =
     ( Inst.condition list list (* counter examples *)
-      (*    [ ( sigma               ,       psi ) ] *)
-    , ((Inst.name * Inst.term) list * Inst.assertion) list (* solutions *)
-    ) Either.either
+        (*    [ ( sigma               ,       psi ) ] *)
+        , ((Inst.name * Inst.term) list * Inst.assertion) list (* solutions *)
+        ) Either.either
 
-
-  sharing Constraint.Inst = Inst
+  val solve : Constraint.constraint -> solution
 end;
 
 
@@ -255,6 +258,32 @@ local open P.Psi open P open Missing in
 
   fun clauseP (_,_,p) = p
   fun clauseArgs (_,xvec,_) = xvec
+  fun clauseProcessesWithSameArity e a ar =
+    ClEnv.find e a |>
+    filter (fn cls => length (clauseArgs cls) = ar) |>
+    map clauseP
+
+  fun isInvCycleFree e v Nil = true
+    | isInvCycleFree e v (Tau _)                 = true
+    | isInvCycleFree e v (Output _)              = true
+    | isInvCycleFree e v (Input _)               = true
+    | isInvCycleFree e v (BrOutput _)            = true
+    | isInvCycleFree e v (BrInput _)             = true
+    | isInvCycleFree e v (Assertion _)           = true
+    | isInvCycleFree e v (Restriction (_, p))    = isInvCycleFree e v p
+    | isInvCycleFree e v (Replication p)         = isInvCycleFree e v p
+    | isInvCycleFree e v (Parallel (p, q))       =
+        isInvCycleFree e v p andalso isInvCycleFree e v q
+    | isInvCycleFree e v (Case cs)               =
+        all (fn (phi,p) => isInvCycleFree e v p) cs
+    | isInvCycleFree e v (Invocation (a,mvec))   =
+    let val ar = length mvec in
+        if member (a,ar) v
+            then false
+            else (clauseProcessesWithSameArity e a ar) |>
+                 all (fn p => isInvCycleFree e ((a,ar)::v) p)
+    end
+
 
   fun guarded' e v Nil                     = true
     | guarded' e v (Tau _)                 = true
@@ -399,6 +428,52 @@ sig
 end;
 
 
+signature SYMBOLIC_PSI_REDUCER =
+sig
+  structure Sim : SYMBOLIC_PSI_SIMULATOR
+  structure Slv : SYMBOLIC_CONSTRAINT_SOLVER
+  sharing Sim.Psi.Inst = Slv.Inst
+
+  val reduce :
+    Sim.ClEnv.env -> Sim.Psi.psi -> Sim.Constraint.constraint ->
+        (Sim.Psi.psi * Sim.Tr.Act.action * Sim.Constraint.constraint *
+         Slv.solution * Sim.Psi.psi) list
+
+  val reduceA :
+    Sim.ClEnv.env -> Sim.Psi.psi -> Sim.action_type ->
+        Sim.Constraint.constraint ->
+        (Sim.Psi.psi * Sim.Tr.Act.action * Sim.Constraint.constraint *
+         Slv.solution * Sim.Psi.psi) list
+end;
+
+
+functor SymbolicPsiReducer(A: sig
+  structure Sim : SYMBOLIC_PSI_SIMULATOR
+  structure Slv : SYMBOLIC_CONSTRAINT_SOLVER
+  sharing Sim.Psi.Inst = Slv.Inst
+end): SYMBOLIC_PSI_REDUCER =
+struct
+  open Missing
+  open A
+  structure C = Sim.Constraint
+
+  fun onlySolv trs =
+    List.filter (fn (tr as (_,_,_,s,_)) =>
+        s |> either (const false) (const true)) trs
+
+  fun solve c trs = trs |>
+    map (fn (tr as (p,act,cstr,p')) =>
+        let val aggrC = c <//C.compose//> cstr
+        in (p, act, aggrC, Slv.solve aggrC, p') end)
+
+  fun reduce env proc c =
+    Sim.reduce env proc |> solve c |> onlySolv
+
+  fun reduceA env proc tAct c =
+    Sim.reduceA env proc tAct |> solve c |> onlySolv
+end;
+
+
 functor SymbolicPsiSimulator (SI: SYMBOLIC_PSI)
     : SYMBOLIC_PSI_SIMULATOR =
 struct
@@ -504,7 +579,7 @@ in
   fun isBrInput (Act.BrInput _) = true
     | isBrInput _               = false
 
-  val agentBinders = Frame.binders o Frame.f
+  val agentBinders = Frame.binders o Frame.frameOf
 
   structure ActAlpha = NominalAlpha(Act);
   structure Residual = StrongSymbolicTransitionResidual(Tr)
@@ -551,6 +626,8 @@ in
 
   fun swapPremises2 ([a, b], r, d) = ([b, a], r, d)
     | swapPremises2 _ = Err.undefined "SymbolicPsiSimulator.swapPremises2"
+
+  fun unvar n = n |> T.support |> List.hd
 
   structure DT =
   struct
@@ -668,7 +745,7 @@ in
 
     fun eval_axiom e (TAU, (ip as (P.Tau p), _)) =
       SOME (ip, Act.Tau, Constr [], p)
-      
+
       | eval_axiom e (IN, (ip as (P.Input (m, xs, _, p)),_)) =
         (* y # psi, m, p, x   *)
         let val y = P.new (xs @ (T.support m) @ (P.support p))
@@ -740,10 +817,10 @@ in
                          | Act.BrInput (m,xs) =>
                      Act.BrInput(m, permuteL L.swap pi xs)
 
-          val bqvec' = Frame.binders (Frame.f q)
+          val bqvec' = Frame.binders (Frame.frameOf q)
           val pi = FrameAlpha.freshNames bqvec' (P.support p)
           val q = PAlpha.permute pi q
-          val fQ = Frame.f q
+          val fQ = Frame.frameOf q
           val bqvec = Frame.binders fQ
           val psiQ = Frame.assertion fQ
         in
@@ -752,32 +829,36 @@ in
       | evalPAR _ = Err.undefined "Simulator.evalPAR default"
 
 
-    fun evalCOM ([(iP, oP as Act.Output(_,avec,_), (IOConstr(ioP as (bpvec, psiP, _, _),cp)), dP),
+    fun evalCOM ([(iP, oP as Act.Output(_,avec,ns), (IOConstr(ioP as (bpvec, psiP, _, _),cp)), dP),
                   (iQ, Act.Input (z, xs),          (IOConstr(ioQ as (bqvec, psiQ, _, _),cq)), dQ)]
                   ,_,
                   (oPQ,_)) sym =
-      let
-      (* avec # Q *)
-      val (avec,ns, dP) =
-        case ResidualAlpha.makeFresh avec (oP, dP) (P.support iQ)
-         of (Act.Output(_,avec,ns),dp) => (avec,ns,dp)
-          | _ => Err.undefined "Simulator.evalCOM makeFresh"
+    if not (Lst.all (fn (x,n) => I.canSubs (I.Term.atomSort x) (I.Term.dataSort n))
+                    (Lst.zip xs ns))
+      then NONE
+      else
+        let
+          (* avec # Q *)
+          val (avec, ns, dP) =
+            case ResidualAlpha.makeFresh avec (oP, dP) (P.support iQ)
+             of (Act.Output(_,avec,ns),dp) => (avec,ns,dp)
+              | _ => Err.undefined "Simulator.evalCOM makeFresh"
 
-      val pq' = (if sym then Tpl.swap else id) (dP, P.subst dQ (Lst.zip xs ns))
-      val pq = abstractP avec (P.Parallel pq')
-      val c =
-      case KAlpha.makeFresh bpvec  (IOConstr(ioP,[])) (bqvec @ (P.support iQ)) of
-            IOConstr((bvec1, psiP, m, _),_) =>
-        (case KAlpha.makeFresh bqvec (IOConstr(ioQ,[])) (bpvec @ (P.support iP)) of
-            IOConstr((bvec2, psiQ, n, _),_) =>
-          (bvec1 @ bvec2, psiP </I.compose/> psiQ, [I.chaneq (m, n)])
-          | _ => Err.undefined "Simulator.evalCOM makeFresh 2")
-          | _ => Err.undefined "Simulator.evalCOM makeFresh 1"
-    in
-      SOME (oPQ, Act.Tau,
-        Constr(c :: Constraint.addFrame (bqvec, psiQ) cp
-                  @ Constraint.addFrame (bpvec, psiP) cq),
-          pq)
+          val pq' = (if sym then Tpl.swap else id) (dP, P.subst dQ (Lst.zip xs ns))
+          val pq = abstractP avec (P.Parallel pq')
+          val c =
+          case KAlpha.makeFresh bpvec  (IOConstr(ioP,[])) (bqvec @ (P.support iQ)) of
+                IOConstr((bvec1, psiP, m, _),_) =>
+            (case KAlpha.makeFresh bqvec (IOConstr(ioQ,[])) (bpvec @ (P.support iP)) of
+                IOConstr((bvec2, psiQ, n, _),_) =>
+              (bvec1 @ bvec2, psiP </I.compose/> psiQ, [I.chaneq (m, n)])
+              | _ => Err.undefined "Simulator.evalCOM makeFresh 2")
+              | _ => Err.undefined "Simulator.evalCOM makeFresh 1"
+        in
+          SOME (oPQ, Act.Tau,
+            Constr(c :: Constraint.addFrame (bqvec, psiQ) cp
+                      @ Constraint.addFrame (bpvec, psiP) cq),
+              pq)
     end
       | evalCOM _ _ = Err.undefined "Simulator.evalCOM default"
 
@@ -793,16 +874,14 @@ in
          of (Act.BrOutput(ch,avec,ns),dp) => (ch,avec,ns,dp)
           | _ => Err.undefined "Simulator.evalBRCOM makeFresh"
 
-      val (bpvec,psiP) = case Frame.f iP of Frame.Frame f => f
-      val (bqvec,psiQ) = case Frame.f iQ of Frame.Frame f => f
-
+      val (bpvec,psiP) = case Frame.frameOf iP of Frame.Frame f => f
+      val (bqvec,psiQ) = case Frame.frameOf iQ of Frame.Frame f => f
       val pq = P.Parallel $ (if sym then Tpl.swap else id) (dP, P.subst dQ (Lst.zip xs ns))
     in
-
       SOME (oPQ, Act.BrOutput(ch,avec,ns),
         BrConstr(Lst.intersection np nq,
              Constraint.addFrame (bqvec, psiQ) cp
-                 @ Constraint.addFrame (bpvec, psiP) cq),
+                 @ Constraint.addFrame (bpvec, psiP) (Constraint.swap (unvar ch, unvar z) cq)),
           pq)
     end
       | evalBRCOM _ _ = Err.undefined "Simulator.evalBRCOM default"
@@ -812,7 +891,6 @@ in
     fun swaps p [] = p
       | swaps p (ab::l) = swaps (P.swap ab p) l
 
-    fun unvar n = n |> T.support |> List.hd
 
     fun evalBRMERGE ([(iP, oP as Act.BrInput(x,xs), (BrConstr(np,cp)), dP),
                       (iQ,       Act.BrInput(y,ys), (BrConstr(nq,cq)), dQ)]
@@ -824,8 +902,8 @@ in
          of (Act.BrInput(ch,ns),dp) => (ch,ns,dp)
           | _ => Err.undefined "Simulator.evalBRMERGE makeFresh"
 
-      val (bpvec,psiP) = case Frame.f iP of Frame.Frame f => f
-      val (bqvec,psiQ) = case Frame.f iQ of Frame.Frame f => f
+      val (bpvec,psiP) = case Frame.frameOf iP of Frame.Frame f => f
+      val (bqvec,psiQ) = case Frame.frameOf iQ of Frame.Frame f => f
       val pq = P.Parallel(dP', swaps dQ (Lst.zip ys ns))
     in
       SOME (oPQ, Act.BrInput(ch,xs),

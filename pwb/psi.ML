@@ -101,8 +101,8 @@ sig
   datatype frame = Frame of Psi.Inst.name list * Psi.Inst.assertion
 
   (* compute the frame of a psi agent *)
-  val f          : Psi.psi -> frame
-  val unit_frame : frame
+  val frameOf    : Psi.psi -> frame
+  val unitFrame : frame
   val compose    : frame -> frame -> frame
 
   val assertion  : frame -> Psi.Inst.assertion
@@ -124,7 +124,7 @@ struct
 
   datatype frame = Frame of Inst.name list * Inst.assertion
 
-  val unit_frame                       = Frame ([], Inst.unit)
+  val unitFrame                       = Frame ([], Inst.unit)
   fun extend_names ns (Frame (fns, a)) = Frame (ns @ fns, a)
 
   fun assertion (Frame ( _, a)) = a
@@ -172,18 +172,18 @@ struct
     Frame (avecA @ avecB, P.Inst.compose (psiA, psiB))
   end
 
-  fun f (Tau _)               = unit_frame
-    | f (Input _)             = unit_frame
-    | f (BrInput _)           = unit_frame
-    | f (Output _)            = unit_frame
-    | f (BrOutput _)          = unit_frame
-    | f (Case _)              = unit_frame
-    | f (Replication _)       = unit_frame
-    | f (Assertion a)         = Frame ([], a)
-    | f (Parallel (p, q))     = compose (f p) (f q)
-    | f (Restriction (ns, p)) = extend_names [ns] (f p)
-    | f (Nil)                 = unit_frame
-    | f (Invocation _)        = unit_frame
+  fun frameOf (Tau _)               = unitFrame
+    | frameOf (Input _)             = unitFrame
+    | frameOf (BrInput _)           = unitFrame
+    | frameOf (Output _)            = unitFrame
+    | frameOf (BrOutput _)          = unitFrame
+    | frameOf (Case _)              = unitFrame
+    | frameOf (Replication _)       = unitFrame
+    | frameOf (Assertion a)         = Frame ([], a)
+    | frameOf (Parallel (p, q))     = compose (frameOf p) (frameOf q)
+    | frameOf (Restriction (ns, p)) = extend_names [ns] (frameOf p)
+    | frameOf (Nil)                 = unitFrame
+    | frameOf (Invocation _)        = unitFrame
 
 
   local open Missing in
@@ -430,6 +430,7 @@ struct
         I.Assr.eqData (psi,psi')
       | eq alphaEq (Invocation (a,mvec), Invocation (a',mvec')) =
         a = a' andalso TVec.eqData (mvec, mvec')
+      | eq alphaEq (Tau p, Tau p') = p </eq alphaEq/> p'
       | eq alphaEq _ = false
     and caseEq alphaEq [] [] = true
       | caseEq alphaEq [] _  = false

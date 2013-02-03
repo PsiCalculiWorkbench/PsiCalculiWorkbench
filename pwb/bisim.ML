@@ -1,7 +1,8 @@
 (* uses pwb/missing,
         pwb/psi,
         pwb/simulator,
-        pwb/weak-simulator
+        pwb/weak-simulator,
+        pwb/pwb-logger
 *)
 
 signature SYMBOLIC_BISIM_CONSTRAINT =
@@ -34,6 +35,7 @@ sig
 
   val simplify : constraint -> constraint
   val cnf      : constraint -> constraint
+  val cnfList  : constraint -> constraint list list
   val dnf      : constraint -> constraint
   val rewrite  : (constraint -> constraint option) list
                -> constraint -> constraint
@@ -56,7 +58,6 @@ sig
   structure Constraint : SYMBOLIC_BISIM_CONSTRAINT
 
   val solve :
-    (string -> Constraint.constraint -> unit) ->
     Constraint.constraint ->
         ( Psi.Inst.condition list list ,
         ((Psi.Inst.name * Psi.Inst.term) list * Psi.Inst.assertion) list)
@@ -348,12 +349,22 @@ struct
 
   local open Missing in
 
+  (* 'c' must be free from 'forall' *)
   fun cnf c = c
     |> simplify
     |> rewrite elimImpRules
     |> rewrite deMorganAndNegRules
     |> rewrite disjRules
     |> simplify
+
+
+  fun disjToList (Disj (c,c')) = disjToList c @ disjToList c'
+    | disjToList c = [c]
+
+  fun cnfToList (Conj (c,c')) = cnfToList c @ cnfToList c'
+    | cnfToList c = [disjToList c]
+
+  fun cnfList c = c |> cnf |> cnfToList
 
   fun dnf c = c
     |> simplify
@@ -390,25 +401,32 @@ end;
 
 
 functor Bisim(A: sig
-  structure WSim   : WEAK_SYMBOLIC_PSI_SIMULATOR
+  structure WRed   : WEAK_SYMBOLIC_PSI_REDUCER
+  (*structure WSim   : WEAK_SYMBOLIC_PSI_SIMULATOR*)
   structure C      : SYMBOLIC_BISIM_CONSTRAINT
   structure SymPsi : SYMBOLIC_PSI
 
-  sharing C.Psi = WSim.Sim.Psi = SymPsi.Psi
+  val pp : SymPsi.Psi.psi -> string
+
+  (*sharing C.Psi = WSim.Sim.Psi = SymPsi.Psi*)
+  sharing C.Psi = WRed.Red.Sim.Psi = SymPsi.Psi
 end) : BISIM =
 struct
   open Missing
   open A
 
-  structure Psi   = WSim.Sim.Psi
-  structure TC    = WSim.Tr.Constraint
-  structure R     = StrongSymbolicTransitionResidual(WSim.Sim.Tr)
+  structure Psi   = WRed.Red.Sim.Psi
+  structure TC    = WRed.Tr.Constraint
+  structure R     = StrongSymbolicTransitionResidual(WRed.Red.Sim.Tr)
   structure RA    = NominalAlpha(R)
   structure L     = NominalNameList(Psi.Inst.Term)
   structure F     = C.Frame
-  structure ClEnv = WSim.Sim.ClEnv
+  structure ClEnv = WRed.Red.Sim.ClEnv
 
   open C
+
+  val log = PwbLog.write "Bisim"
+
 
   fun permute swap pi t =
     List.foldr (fn ((a,b), t) => swap (a,b) t) t pi
@@ -421,35 +439,68 @@ struct
   fun unionT ts     = List.foldr joinT emptyT ts
   fun snglT (p,q) c = [((p,q), c)]
 
-  fun inW ((p,q), w) =
-    maybe false (const true) $
-        List.find (fn (p',q') => Psi.eqData (p,p') andalso Psi.eqData (q,q')) w
+  fun inW inpN ((p,q), w) = w |>
+    List.find (fn (inpN', (p',q')) => 
+        if length inpN <> length inpN' then false else
+        let
+          val newInpN = Psi.Inst.Term.newsBasedOn inpN 
+            (Psi.support p @ Psi.support q @
+             Psi.support p' @ Psi.support q' @
+            inpN @ inpN')
+          val pi1 = zip newInpN inpN
+          val pi2 = zip newInpN inpN'
+          val p = permute Psi.swap pi1 p
+          val q = permute Psi.swap pi1 q
+          val p' = permute Psi.swap pi2 p'
+          val q' = permute Psi.swap pi2 q'
+        in
+          Psi.eqData (p,p') andalso Psi.eqData (q,q')
+        end)
+     |>
+    maybe false (const true)
+
+
+  (* Warning: stateful API *)
+
+  val tableW = ref emptyT
+  fun extendTable inpN (p,q) =
+    let val () = tableW := (inpN, (p,q))::(!tableW)
+    in () end
+  fun resetTable () = tableW := []
+  fun inTable inpN (p,q) = (p,q) </inW inpN/> (!tableW)
+  fun tableSize () = length (!tableW)
 
 
   val unitPsi = Psi.Inst.unit   (* Carry around an assertion some day. *)
 
   fun translateOne (bv,psi,[]) = []
-    | translateOne (bv,psi,phi::phis) = 
+    | translateOne (bv,psi,phi::phis) =
       Atomic (bv,psi,phi) :: translateOne (bv,psi,phis)
 
   fun translateC []    = True
-    | translateC cstrs = 
+    | translateC cstrs =
       Lst.reduce Conj $ Lst.flatmapmix translateOne cstrs
 
   fun collectCstrDeriv trs =
-    map (fn (p,alpha,c,p') => (translateC c, p')) trs
+    map (fn (p,alpha,c,s,p') => (translateC c, p')) trs
 
 
   fun freshness avec p =
     List.foldr (fn (a,c) => FreshP (a,p) </Conj/> c) True avec
 
-  fun strictTau env p = WSim.Sim.reduceA env p WSim.Sim.TAUa
-  fun strictOut env p = WSim.Sim.reduceA env p WSim.Sim.OUTa
-  fun strictIn  env p = WSim.Sim.reduceA env p WSim.Sim.INa
 
-  fun silent  env p = WSim.silent  env p
-  fun weakOut env p = WSim.reduceA env p WSim.Sim.OUTa
-  fun weakIn  env p = WSim.reduceA env p WSim.Sim.INa
+  val unitTrC = WRed.Red.Sim.Constraint.unit
+
+  fun strictTau env p = WRed.Red.reduceA env p WRed.Red.Sim.TAUa unitTrC
+  fun strictOut env p = WRed.Red.reduceA env p WRed.Red.Sim.OUTa unitTrC
+  fun strictIn  env p = WRed.Red.reduceA env p WRed.Red.Sim.INa unitTrC
+
+  fun silent  env p = WRed.silent  env p unitTrC
+  fun weakOut env p = WRed.reduceA env p WRed.Red.Sim.OUTa unitTrC
+  fun weakIn  env p = WRed.reduceA env p WRed.Red.Sim.INa unitTrC
+
+
+
 
   val xNames       = ref ([] : Psi.Inst.name list)
   fun addName a    = xNames := (a :: !xNames)
@@ -463,14 +514,18 @@ struct
     y
   end
 
-  fun matchStImp env (p,q) c w =
+
+
+  fun matchStImp env inpN (p,q) c =
   let
-    val qtr = collectCstrDeriv $ silent env q
+    val qtr = silent env q |> collectCstrDeriv
     val (cvec,tvec) = ListPair.unzip $ map
         (fn (cqi, qi) =>
-            let val (ci, ti) = close env (p,qi) (c </Conj/> cqi) ((p,q)::w)
+            let
+              val () = extendTable inpN (p,q)
+              val (ci, ti) = close env inpN (p,qi) (c </Conj/> cqi)
             in (cqi </Conj/> ci </Conj/>
-                ((ci </Conj/> cqi) </Imp/> StImp (F.f p, F.f qi)),
+                ((ci </Conj/> cqi) </Imp/> StImp (F.frameOf p, F.frameOf qi)),
                 ti)
             end) qtr
   in
@@ -478,14 +533,16 @@ struct
   end
 
 
-  and matchTau env (p,q) c w =
+  and matchTau env inpN (p,q) c =
   let
     val ptr = collectCstrDeriv $ strictTau env p
     val qtr = collectCstrDeriv $ silent env q
     val (cvec,tvec) = ListPair.unzip $ map (fn (cpi,pi) =>
         let val (civec, tivec) = ListPair.unzip $ map (fn (cqj,qj) =>
-            let val (cij,tij) =
-                close env (pi,qj) (c </Conj/> cpi </Conj/> cqj) ((p,q) :: w)
+            let
+              val () = extendTable inpN (p,q)
+              val (cij,tij) =
+                close env inpN (pi,qj) (c </Conj/> cpi </Conj/> cqj)
             in
               (cqj </Conj/> cij, tij)
             end) qtr
@@ -497,10 +554,10 @@ struct
   end
 
 
-  and matchOut env (p,q) c w =
+  and matchOut env inpN (p,q) c =
   let
     val ptr = (strictOut env p) |> map
-        (fn (p,(WSim.Sim.Tr.Act.Output (y', avec, n)), cpi, pi) =>
+        (fn (p, WRed.Red.Sim.Tr.Act.Output (y', avec, n), cpi, _, pi) =>
             let
               val supP = Psi.support p
               val supQ = Psi.support q
@@ -508,9 +565,9 @@ struct
               val y    = newName (supP @ supQ @ supC @ usedNames ())
               val cpi  = C.swap (y, unvar y') (translateC cpi)
             in
-              (RA.makeFresh avec (WSim.Sim.Tr.Act.Output (y',avec,n), pi)
+              (RA.makeFresh avec (WRed.Red.Sim.Tr.Act.Output (y',avec,n), pi)
                 ([y] @ supP @ supQ @ supC @ (C.support cpi))) |>
-                (fn (WSim.Sim.Tr.Act.Output (_, avec, n), pi) =>
+                (fn (WRed.Red.Sim.Tr.Act.Output (_, avec, n), pi) =>
                     ((y, avec, n), cpi, pi)
                   | _ => Err.undefined "Bisim.matchOut makeFresh")
             end
@@ -519,23 +576,24 @@ struct
     val (cvec, tvec) = ListPair.unzip $ map (fn ((y,avec,ns), cpi, pi) =>
         let
           val qtr = weakOut env q
-            |> List.filter (fn (_,WSim.Tr.Output (z,cvec,ns'),_,_) =>
+            |> List.filter (fn (_,WRed.Tr.Output (z,cvec,ns'),_,_,_) =>
                 length cvec = length avec | _ => false)
             |> map
-            (fn (q,WSim.Tr.Output (z,cvec,ns'),cqj,qj) =>
+            (fn (q,WRed.Tr.Output (z,cvec,ns'),cqj,_,qj) =>
                 ((y, avec, List.map (permute Psi.Inst.Term.swap (zip avec cvec)) ns'),
                  C.swap (unvar z, y) (translateC cqj),
                  permute Psi.swap (zip avec cvec) qj)
               | _ => Err.undefined "Bisim.matchOut default 2" )
           val (civec,tivec) = ListPair.unzip $ map (fn ((z,cvec,ns'),cqj,qj) =>
             let
+              val () = extendTable inpN (p,q)
               val (cij,tij) =
                 close env
+                      inpN
                       (pi,qj)
                       (Lst.reduce Conj (Lst.zipwith TermEq ns ns') </Conj/>
                         (c </Conj/> cpi </Conj/> cqj </Conj/>
                           freshness avec p </Conj/> freshness avec q))
-                      ((p,q)::w)
             in
               (cpi </Conj/> (Lst.reduce Conj (Lst.zipwith TermEq ns ns')) </Conj/> cij, tij)
             end ) qtr
@@ -549,11 +607,11 @@ struct
   end
 
 
-  and matchIn env (p,q) c w =
+  and matchIn env inpN (p,q) c =
   let
     fun folder ((x,x'),pi) = Psi.swap (x,x') pi
     val ptr = strictIn env p |> map
-        (fn (p,WSim.Sim.Tr.Act.Input (y',xs'),cpi,pi) =>
+        (fn (p,WRed.Red.Sim.Tr.Act.Input (y',xs'),cpi,_,pi) =>
          let
            val supP = Psi.support p
            val supQ = Psi.support q
@@ -569,16 +627,17 @@ struct
          end | _ => Err.undefined "Bisim.matchIn default" )
     val (cvec,tvec) = ListPair.unzip (map (fn ((y,xs), cpi, pi) =>
         let
-          val qtr = weakIn env q |> map (fn (q,WSim.Tr.Input (z,xs'),cqj,qj) =>
+          val qtr = weakIn env q |> map (fn (q,WRed.Tr.Input (z,xs'),cqj,_,qj) =>
             ((y, xs), C.swap (y,unvar z) (translateC cqj), List.foldr folder qj $ Lst.zip xs xs')
             | _ => Err.undefined "Bisim.matchIn default 2" )
           val (civec,tivec) = ListPair.unzip (map (fn ((z,x),cqj,qj) =>
             let
+              val () = extendTable xs (p,q)
               val (cij,tij) =
                 close env
+                      xs
                       (pi,qj)
                       (c </Conj/> cpi </Conj/> cqj)
-                      ((p,q)::w)
             in (cqj </Conj/> cij, tij) end) qtr)
         in
           (Forall (y, cpi </Imp/> disjunct civec), unionT tivec)
@@ -587,19 +646,24 @@ struct
     (conjunct cvec, unionT tvec)
   end
 
-  and close env (p,q) c w =
-    if (p,q) </inW/> w then
+  and close env inpN (p,q) c =
+  let
+    val () = ()
+  in
+    if inTable inpN (p,q) then
       (True, emptyT)
     else
       let
-        val (c_stimp,  t_stimp ) = matchStImp env (p,q) c w
-        val (c'_stimp, t'_stimp) = matchStImp env (q,p) c w
-        val (c_tau, t_tau)       = matchTau env (p,q) c w
-        val (c'_tau, t'_tau)     = matchTau env (q,p) c w
-        val (c_out, t_out)       = matchOut env (p,q) c w
-        val (c'_out, t'_out)     = matchOut env (q,p) c w
-        val (c_in, t_in)         = matchIn env (p,q) c w
-        val (c'_in, t'_in)       = matchIn env (q,p) c w
+        val (c_stimp,  t_stimp ) = matchStImp env inpN (p,q) c
+        val (c'_stimp, t'_stimp) = matchStImp env inpN (q,p) c
+        val (c_tau, t_tau)       = matchTau env inpN (p,q) c
+        val (c'_tau, t'_tau)     = matchTau env inpN (q,p) c
+        val (c_out, t_out)       = matchOut env inpN (p,q) c
+        val (c'_out, t'_out)     = matchOut env inpN (q,p) c
+        val (c_in, t_in)         = matchIn env inpN (p,q) c
+        val (c'_in, t'_in)       = matchIn env inpN (q,p) c
+        (*val (c_in, t_in)         = (True, emptyT)*)
+        (*val (c'_in, t'_in)       = (True, emptyT)*)
       in
         (c </Conj/> c_stimp </Conj/> c'_stimp </Conj/>
          c_tau </Conj/> c'_tau </Conj/>
@@ -615,12 +679,20 @@ struct
         (snglT (q,p) (c </Conj/> c'_stimp </Conj/> c'_tau </Conj/>
                       c'_out </Conj/> c'_in)) ) )
       end
+  end
 
   and bisim env (p,q) =
   let
+    val () = log "Started"
+    val () = resetTable ()
     val () = resetNames ()
+    val timer = Timer.startCPUTimer ()
+    val c = close env [] (p,q) True
+    val {usr=usr,sys=sys} = Timer.checkCPUTimer timer
+    val () = log ("Finished in " ^ Time.toString usr ^ "s")
+    val () = log ("Agent pairs visited: " ^ Int.toString (tableSize ()))
   in
-    close env (p,q) True emptyT
+    c
   end
 
 end;

@@ -1,7 +1,6 @@
 (* uses pwb/workbench, pwb/constraint-solvers/ilp
  *)
 
-
 structure VPCCSInstanceRequisites =
 struct
   open Missing
@@ -377,6 +376,7 @@ structure VPCCSSymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = VPCCSPsiInstance.Inst
   structure Constraint = VPCCSSymbolicInstanceRequisites.Constraint
+  type solution = (Inst.condition list list , ((Inst.name * Inst.term) list * Inst.assertion) list) Either.either
   val solve            = VPCCSSymbolicInstanceRequisites.solve
 end;
 structure VPCCSSymbolicBisimConstraintSolver : SYMBOLIC_BISIM_CONSTRAINT_SOLVER =

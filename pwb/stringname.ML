@@ -3,6 +3,7 @@
 structure StringName :
 sig
   val swap_name        : string * string -> string -> string
+  val generateDistinctBasedOn : string -> string list -> string
   val generateDistinct : string list -> string
   val generate         : unit -> string
 end = struct
@@ -11,7 +12,7 @@ end = struct
     if a = d then b else
     if b = d then a else d
 
-  fun generateDistinct strs =
+  fun generateDistinctBasedOn name strs =
   let
     val seed = map Char.toString (String.explode "abcdefghijklmnopqrstuvwxyz")
     fun distinct s = List.all (fn x => x <> s) strs
@@ -43,6 +44,8 @@ end = struct
                      | SOME s => s)
        | SOME s => s
   end;
+
+  fun generateDistinct strs = generateDistinctBasedOn "" strs
 
 
   val sfx = ref "n"

@@ -33,7 +33,7 @@ sig
 
   (*
    * Check consistency at different levels of strength. The Fast strength level
-   * is not required to be complete consistency check. It is even allowed to
+   * is not required to do a complete consistency check. It is even allowed to
    * always return true, as long as the Complete strength level does the
    * complete consistency check.
    *)
@@ -229,7 +229,7 @@ struct
   fun findDecision (FCnfFalse _) = NONE
     | findDecision (FCl []) = NONE
     | findDecision (FCl (((l::c),c')::cs)) = SOME (l,c')
-    | findDecision _ = Err.undefined ()
+    | findDecision _ = Err.undefined "PwbSMT.findDecision"
 
   fun decide FailState = NONE
     | decide (st as (State (a,m,fcnf))) =

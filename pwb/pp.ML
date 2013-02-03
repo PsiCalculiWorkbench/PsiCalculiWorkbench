@@ -13,6 +13,7 @@ sig
   val group  : document -> document
   val fill : document list -> document
   val pretty : int -> document -> string
+  val plain : document -> string
 end;
 
 
@@ -135,6 +136,13 @@ local open Missing in
   val best = best'
 
   fun pretty w x = layout $ best w 0 x
+
+  fun plain NIL = ""
+    | plain (JOIN (a,b)) = plain a ^ plain b
+    | plain (NEST (i,a)) = plain a
+    | plain (LINE) = "\n"
+    | plain (TEXT x) = x
+    | plain (GROUP (_,a)) = plain a
 
 
 

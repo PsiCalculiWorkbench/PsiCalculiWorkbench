@@ -55,8 +55,8 @@ struct
   fun forget (eqls,ineqls) lits =
   let
     val (eq,ineq) = List.partition (fn (Eq _) => true | _ => false) lits
-    val eq = map (fn (Eq x) => x | _ => Err.undefined ()) eq
-    val ineq = map (fn (InEq x) => x | _ => Err.undefined ()) ineq
+    val eq = map (fn (Eq x) => x | _ => Err.undefined "PwbEqTheory.forget") eq
+    val ineq = map (fn (InEq x) => x | _ => Err.undefined "PwbEqTheory.forget") ineq
   in
     (Lst.minus eqls eq, Lst.minus ineqls ineq)
   end

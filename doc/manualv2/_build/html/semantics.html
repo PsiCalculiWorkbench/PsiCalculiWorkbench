@@ -1,0 +1,189 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Symbolic Semantics &mdash; Pwb 2013-01 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '',
+        VERSION:     '2013-01',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="top" title="Pwb 2013-01 documentation" href="index.html" />
+    <link rel="next" title="Coding Conventions" href="coding.html" />
+    <link rel="prev" title="Installation" href="installation.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="coding.html" title="Coding Conventions"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="installation.html" title="Installation"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Pwb 2013-01 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="symbolic-semantics">
+<h1>Symbolic Semantics<a class="headerlink" href="#symbolic-semantics" title="Permalink to this headline">¶</a></h1>
+<div class="math">
+\[\newcommand\ve[1]{\tilde{#1}}
+\newcommand\sort[1]{\mathsf{Sort}(#1)}
+\newcommand\entails\vdash
+\newcommand\chEq{\stackrel{\cdot}{\leftrightarrow}}
+\newcommand\frameEq\simeq
+\newcommand\compose\otimes
+\newcommand\Unit{\mathbf{1}}\]</div>
+<div class="section" id="requirements-on-psi-calculus-parameters">
+<h2>Requirements on psi-calculus parameters<a class="headerlink" href="#requirements-on-psi-calculus-parameters" title="Permalink to this headline">¶</a></h2>
+<p>Channel properties</p>
+<div class="math">
+\[\begin{split}\text{Channel Symmetry}\; &amp; \Psi\entails M \chEq N  \implies \Psi\entails N\chEq M \\
+\text{Channel Transitivity}\; &amp; \Psi\entails M \chEq N \land  \Psi\entails N \chEq L \implies \Psi\entails M\chEq L\end{split}\]</div>
+<p>Assertion properties</p>
+<div class="math">
+\[\begin{split}\text{Composition} &amp; \Psi\frameEq\Psi' \implies \Psi\compose\Psi'' \frameEq \Psi'\compose\Psi'' \\
+\text{Identity} &amp; \Psi\compose\Unit \frameEq \Psi \\
+\text{Associativity} &amp; (\Psi\compose\Psi')\compose\Psi'' \frameEq \Psi\compose(\Psi'\compose\Psi'') \\
+\text{Commutativity} &amp; \Psi\compose\Psi' \frameEq \Psi'\compose\Psi\end{split}\]</div>
+<p>Entailement properties</p>
+<div class="math">
+\[\text{Wakening}\; \Psi\entails\varphi \implies \Psi\compose\Psi'\entails\varphi\]</div>
+<p>Name are terms</p>
+<div class="math">
+\[\mathcal{N} \subseteq \mathbf{T}\]</div>
+</div>
+<div class="section" id="broadcast-requirements">
+<h2>Broadcast requirements<a class="headerlink" href="#broadcast-requirements" title="Permalink to this headline">¶</a></h2>
+<div class="math">
+\[\Psi\entails M \stackrel{\cdot}{\prec} K \implies n(K) \subseteq n(M)\]\[\Psi\entails K \stackrel{\cdot}{\succ} M \implies n(K) \subseteq n(M)\]</div>
+</div>
+<div class="section" id="sorted-substitution-requirements">
+<h2>Sorted Substitution Requirements<a class="headerlink" href="#sorted-substitution-requirements" title="Permalink to this headline">¶</a></h2>
+<p>Substitution <span class="math">\([\ve{a} := \ve{N}]\)</span> is well formed if</p>
+<div class="math">
+\[\sort{a_i}\prec\sort{N_i}\]</div>
+<p>substitution must land in the same datatype it started with.</p>
+<p>requirements, <span class="math">\(T \in \mathbf{T, A, C}\)</span></p>
+<div class="math">
+\[T[\ve{a} := \ve{N}] = ((\ve{a}\,\ve{b})\cdot T)[\ve{b} := \ve{N}]\]</div>
+<p>alpha-renaming of substituted variables, and</p>
+<div class="math">
+\[\sort{M\sigma} \leq \sort{M}\]</div>
+</div>
+<div class="section" id="extra-requirements-of-bisimulation-algorithm-on-substitution">
+<h2>Extra requirements of bisimulation algorithm on substitution<a class="headerlink" href="#extra-requirements-of-bisimulation-algorithm-on-substitution" title="Permalink to this headline">¶</a></h2>
+<div class="math">
+\[X[x := x] = X\]\[x[x := M] = M\]\[X[x := M] = X  \text{ whenever } x\# X\]\[X[x := L][y := M] = X[y := M][x := L] \text{ whenever } x\# y, M \text{ and } y\# L\]</div>
+<p>where <span class="math">\(x\)</span>, <span class="math">\(y\)</span> are names, <span class="math">\(X\)</span>, <span class="math">\(M\)</span>, <span class="math">\(L\)</span> are terms.</p>
+</div>
+<div class="section" id="references">
+<h2>References<a class="headerlink" href="#references" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><ol class="first upperalpha" start="13">
+<li>Johansson, B. Victor, and J. Parrow. <a class="reference external" href="http://www.it.uu.se/research/publications/reports/2011-018/">Computing strong and weak bisimulations for psi-calculi - with proofs</a>. Technical Report 2011-018, Department of Information Technology, Uppsala University, Aug.  2011.</li>
+</ol>
+</li>
+<li><ol class="first upperalpha" start="10">
+<li>Bengtson, M. Johansson, J. Parrow, and B. Victor. <a class="reference external" href="http://arxiv.org/abs/1101.3262">Psi-calculi: a framework for mobile processes with nominal data and logic.</a> Logical Methods in Computer Science, 7(1:11), 01 2011.</li>
+</ol>
+</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Symbolic Semantics</a><ul>
+<li><a class="reference internal" href="#requirements-on-psi-calculus-parameters">Requirements on psi-calculus parameters</a></li>
+<li><a class="reference internal" href="#broadcast-requirements">Broadcast requirements</a></li>
+<li><a class="reference internal" href="#sorted-substitution-requirements">Sorted Substitution Requirements</a></li>
+<li><a class="reference internal" href="#extra-requirements-of-bisimulation-algorithm-on-substitution">Extra requirements of bisimulation algorithm on substitution</a></li>
+<li><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="installation.html"
+                        title="previous chapter">Installation</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="coding.html"
+                        title="next chapter">Coding Conventions</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/semantics.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="coding.html" title="Coding Conventions"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="installation.html" title="Installation"
+             >previous</a> |</li>
+        <li><a href="index.html">Pwb 2013-01 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Ramunas Gutkovas.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+    </div>
+  </body>
+</html>

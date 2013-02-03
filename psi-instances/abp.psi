@@ -1,0 +1,41 @@
+
+
+Sender(i,ok,il,b) <= i(dataSend).SenderSend<i,ok,il,dataSend,b>;
+
+SenderSend(i,ok,il,dataSend,b) <= 
+    'ok<"data(dataSend,b)">.
+    il(ackBit) .
+    case "b = ackBit"    : *tau*.Sender<i,ok,il,"~b">
+      [] "b = ~ackBit"   : *tau*.SenderSend<i,ok,il,dataSend,b>
+      [] "isErr(ackBit)" : *tau*.SenderSend<i,ok,il,dataSend,b>
+;
+
+Receiver(o, ik, ol, b) <=
+    ik(msg).
+    case "b = bit(msg)"  : 'o<"datum(msg)">.'ol<b>.Receiver<o,ik,ol,"~b">
+      [] "b = ~bit(msg)" : 'ol<"~b"> . Receiver<o,ik,ol,b>
+      [] "isErr(msg)"    : 'ol<"~b"> . Receiver<o,ik,ol,b>
+;
+
+DataMedium(is,or) <=
+    is(msgggg).
+    case T : 'or<msgggg>.DataMedium<is,or>
+      [] T : 'or<"ERR">.DataMedium<is,or>
+;
+
+ResponseMedium(ir,os) <=
+    ir(b).
+    case T : 'os<b>.ResponseMedium<ir,os>
+      [] T : 'os<"ERR">.ResponseMedium<ir,os>
+;
+
+System(i,o,bs,br) <=
+    (new ok,ik,ol,il)(
+        Sender<i,ok,il,bs> |
+        Receiver<o,ik,ol,br> |
+        DataMedium<ok,ik> |
+        ResponseMedium<ol,il>
+    ) ;
+
+Buffer(i,o) <= i(x).'o<x>.Buffer<i,o>;
+

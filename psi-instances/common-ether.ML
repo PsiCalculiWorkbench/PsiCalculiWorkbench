@@ -1,3 +1,6 @@
+(*
+    uses pwb/workbench
+*)
 structure CommonEtherInstanceRequisites =
 struct
   structure Sort = Unsorted
@@ -30,6 +33,12 @@ struct
 
   fun swapT pi n           = swap_name pi n
   fun swapC pi (Eq (a, b)) = Eq (swapT pi a, swapT pi b)
+
+  fun brReceive (m,n) = Err.undefined 
+    "This intance is not meant to be used with broadcast semantics"
+
+  fun brTransmit (m,n) = Err.undefined
+    "This intance is not meant to be used with broadcast semantics"
 
   fun isNameSort _ = true
   fun canRecv _ _  = true
@@ -202,7 +211,7 @@ struct
                            map (fn sol => tr (sol, cs)) valid)
         end
       | _ => Err.error "explode failed in common-ether.ML")
-      | tr _ = Err.undefined ()
+      | tr _ = Err.undefined "tr"
 
   and fail () = []
   and node (n,[]) = [n]
@@ -219,7 +228,7 @@ struct
        | _  => Either.RIGHT sols
   end
 
-  fun solveBisim _ = Err.undefined ()
+  fun solveBisim _ = Err.undefined "bisim unimplemented"
 end;
 
 
@@ -237,6 +246,7 @@ structure CommonEtherSymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = CommonEtherPsiInstance.Inst
   structure Constraint = CommonEtherSymbolicInstanceRequisites.Constraint
+  type solution = (Inst.condition list list , ((Inst.name * Inst.term) list * Inst.assertion) list) Either.either
   val solve            = CommonEtherSymbolicInstanceRequisites.solve
 end;
 
@@ -268,7 +278,7 @@ struct
   fun parseResult p s =
     case Parser.parse p (StringStream.make s) of
          Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined ()
+       | Either.RIGHT _ => Err.undefined "parseResult"
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   val name = Lex.identifier

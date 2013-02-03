@@ -1,4 +1,5 @@
-
+(* uses pwb/workbench
+*)
 structure FHSSInstanceRequisites =
 struct
   type     name      = string
@@ -48,6 +49,14 @@ struct
   fun eqT _ (a,b) = a = b
   fun eqC _ (a,b) = a = b
   fun eqA _ (a,b) = a = b
+
+
+  fun brReceive (m,n) = Err.undefined 
+    "This intance is not meant to be used with broadcast semantics"
+
+  fun brTransmit (m,n) = Err.undefined
+    "This intance is not meant to be used with broadcast semantics"
+
 
   (* Unsorted *)
   structure Sort = Unsorted
@@ -194,6 +203,7 @@ structure FHSSSymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = FHSSPsiInstance.Inst
   structure Constraint = FHSSSymbolicInstanceRequisites.Constraint
+  type solution = (Inst.condition list list , ((Inst.name * Inst.term) list * Inst.assertion) list) Either.either
   val solve            = FHSSSymbolicInstanceRequisites.solve
 end;
 
@@ -201,7 +211,7 @@ structure FHSSSymbolicBisimConstraintSolver : SYMBOLIC_BISIM_CONSTRAINT_SOLVER =
 struct
   structure Psi = FHSSPsiInstance
   structure Constraint = FHSSSymbolicInstanceRequisites.BisimConstraint
-  fun solve _ = Err.undefined ()
+  fun solve _ = Err.undefined "bisim"
 end;
 
 
@@ -233,7 +243,7 @@ struct
   fun parseResult p s =
     case parse p (StringStream.make s) of
          RIGHT ((r,s)::_) => RIGHT r
-       | RIGHT _ => Err.undefined ()
+       | RIGHT _ => Err.undefined "parseResult"
        | LEFT  _ => LEFT "Error parsing"
 
   fun term () =

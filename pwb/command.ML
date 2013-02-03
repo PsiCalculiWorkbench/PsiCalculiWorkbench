@@ -8,7 +8,9 @@
         pwb/pp-sim,
         pwb/simulator,
         pwb/bisim,
-        pwb/cr
+        pwb/cr,
+        pwb/graph-viz,
+        pwb/pwb-logger
 *)
 
 
@@ -62,22 +64,33 @@ struct
   structure PsiB = PsiLexerParserComb(PsiParser.Parser)
   structure Env  = SI.ClEnv
   structure Sim  = SymbolicPsiSimulator(SI)
+  structure Red  = SymbolicPsiReducer(struct
+    structure Sim = Sim
+    structure Slv = SCS
+  end)
   structure WSim = WeakSymbolicPsiSimulator(SI)
+  structure WRed = WeakSymbolicPsiReducer(struct
+    structure Red = Red
+    structure Tr = WSim.Tr
+  end)
   structure Bisim = Bisim(struct
-    structure WSim   = WSim
+    structure WRed   = WRed
     structure C      = SBCS.Constraint
     structure SymPsi = SI
+
+    fun pp proc = PP.pretty 40 (PsiPP.ppAgent proc)
   end)
   structure PPSAct = PPStrongAction(struct
     structure PP     = PP
     structure Act    = Sim.Tr.Act
     structure PPInst = PPInst
   end)
+
   open PsiParser
   open PsiParser.Parser
   open PsiB
 
-  fun getWidth _ = 80
+  fun getWidth _ = 60
 
   val simplBisim = ref true;
 
@@ -131,6 +144,9 @@ struct
 
   fun outputPP ctx doc =
     print $ pretty ctx doc
+
+  fun outputPPPlain ctx doc =
+    print $ PP.plain doc
 
 
   fun warning ctx msg =
@@ -235,8 +251,8 @@ struct
   fun ppCbrackets ctx doc = text "{|" </sp/> doc </sp/> text "|}"
 
   fun ppConds [phi] = PsiPP.c phi
-    | ppConds phis  = 
-      text "(" </join/> 
+    | ppConds phis  =
+      text "(" </join/>
 	   (sep (text " /\\ ") $ map PsiPP.c phis)
 	   </join/> text ")"
 
@@ -252,7 +268,7 @@ struct
                     </join/> ppConds phis)
 
   fun ppConstraint ctx c =
-    sep (text " /\\ ") $ map (ppAtomicConstraint ctx) c
+    group $ sep (text " /\\ " </join/> line) $ map (ppAtomicConstraint ctx) c
 
   fun ppParens ctx d = text "(" </join/> d </join/> text ")"
 
@@ -266,7 +282,7 @@ struct
         </join/>
         text "(|" </sp/> PsiPP.a psi </sp/> text "|)"
 
-  fun toSConstr (avec,psi,phi) = (avec,psi,[phi]) 
+  fun toSConstr (avec,psi,phi) = (avec,psi,[phi])
 
   fun ppBisimConstraint ctx True = text "true"
     | ppBisimConstraint ctx False = text "false"
@@ -334,22 +350,26 @@ struct
     fun sl (sigma, psi) = text "(" </join/> commaSep [s sigma, PsiPP.a psi]
       </join/> text ")"
   in
-    text "Solution: " </join/>
-    ((fn RIGHT sol' => group $ sep (text "," </join/> line) (map sl sol')
-      | _ => text "No solution found")
-      sol)
+    sl sol
   end
+
+  fun ppSols ctx sols =
+    ((fn RIGHT sol' => group $ nest 2 $ sep (text "," </join/> line)
+                (map (ppSol ctx) sol')
+      | _ => text "No solution found")
+      sols)
 
   fun ppDescr msg doc =
     text msg </join/> (nest 2 (line </join/> doc))
 
-  fun ppTrans ctx ppAlpha (psi,alpha,c,sol,agent) =
+  fun ppTrans ctx ppAlpha (psi,sourceAgent,alpha,c,sol,agent) =
     ppPsi ctx psi </sp/> text "|>" </join/>
         nest 2 (line </join/>
             ppAlpha ctx alpha </join/>
                 nest 2 ( line </nl/>
+                ppDescr "Source:" (ppAgent ctx sourceAgent) </nl/>
                 ppDescr "Constraint:" (ppConstraint ctx c) </nl/>
-                ppDescr "Solution:" (ppSol ctx sol) </nl/>
+                ppDescr "Solution:" (ppSols ctx sol) </nl/>
                 ppDescr "Derivative:" (ppAgent ctx agent)
             ))
 
@@ -514,7 +534,7 @@ struct
     val newCtx = updateEnv ctx (const env')
     val _ = if length cls > 1 then output newCtx "\ndef {" else ()
     val _ = forall (fn c => (outputClause newCtx c; output ctx ";")) cls
-    val _ = if length cls > 1 then output newCtx "};" else output newCtx ";"
+    val _ = if length cls > 1 then output newCtx "};" else ()
     val _ = warnings (droped @ closed @ inv @ guarded)
   in
     return newCtx
@@ -635,26 +655,24 @@ struct
     (fn n =>    trS () >> return n)
 
 
+  fun onlySolv trs =
+    List.filter (fn (tr as (_,_,_,s,_)) =>
+        s |> either (const false) (const true)) trs
+
   fun stepAgentC
         reduce
         ppAlpha
         (wctx as (ctx,(agent::agents))) =
   let
-    fun stransAgent (psi,alpha,c,sol,agent) = agent
+    fun stransAgent (psi,agent',alpha,c,sol,agent) = agent
 
-    val tr = reduce (getEnv ctx) agent (* Sim.Psi.Inst.unit *)
-    val transitions = fst $
-        List.partition (fn (_,_,RIGHT _,_) => true | _ => false) $
-        map (fn (p,alpha,c,p') =>
-            (alpha, c, SCS.solve c, p')) tr
+    val tr = reduce (getEnv ctx) agent Sim.Constraint.unit 
+    val transitions = onlySolv tr
 
     val transitions = transitions |> flatmap
-        (fn (tr as (alpha, c, RIGHT sol, p')) =>
-            (* TODO: cia
-            * tr::
-            *)
+        (fn (tr as (p, alpha, c, RIGHT sol, p')) =>
             ( map (fn (subst, psi) =>
-                (psi, alpha, c, RIGHT sol, Psi.subst p' subst ))) sol
+                (psi, agent, alpha, c, RIGHT sol, Psi.subst p' subst ))) sol
           | _ => Err.undefined "Command.stepAgentC.transitions LEFT")
 
     val n        = List.length transitions
@@ -691,10 +709,10 @@ struct
 
 
   fun sstepAgentC wctx =
-    stepAgentC Sim.reduce ppAlphaSim wctx
+    stepAgentC Red.reduce ppAlphaSim wctx
 
   fun wsstepAgentC wctx =
-    stepAgentC WSim.reduce ppWAlphaSim wctx
+    stepAgentC WRed.reduce ppWAlphaSim wctx
 
 
   fun symbolicStepC ctx name stepF =
@@ -740,18 +758,16 @@ struct
     val ll = cnfToList (Tpl.fst sb)
     *)
 
-    val res = SBCS.solve (fn s => fn c =>
-                outputPP ctx $ PP.line </PP.join/>
-                PP.text ("Debug: " ^ s)  </PP.join/> PP.nest 4
-                (PP.line </PP.join/> ppBisimConstraint ctx c) </PP.join/> PP.line)
-        (Tpl.fst b)
+    val res = SBCS.solve (Tpl.fst b)
   in
-    ( outputPP ctx $ ppBisim ctx (if (!simplBisim) then sb else b)  ;
+    ( (* outputPPPlain ctx $ ppBisim ctx (if (!simplBisim) then sb else b)  ; *)
+        (*PolyML.print sb;*)
+
      (* ; outputPP ctx $ ppBisimCNFList ctx ll *)
       (*outputPP ctx $ PP.text ("Number of /\\ is " ^ (Int.toString $ length ll))
       ; *)
      output ctx "\n\n";
-     outputPP ctx $ ppSol ctx res;
+     outputPP ctx $ ppSols ctx res;
      output ctx "\n";
      ()
      )
@@ -767,6 +783,29 @@ struct
                    then checkBisim ctx (p,q)
                    else output ctx "NOTE: Bisimulation checking is not available.";
                    return ctx) ))
+
+
+  structure Viz = PsiTransitionGraphViz(struct
+    structure Sim = Sim
+    structure Slv = SCS
+
+    fun showP proc = PP.pretty 40 (PsiPP.ppAgent proc)
+    fun showC constr = PP.pretty 40 (ppConstraint (freshState ()) constr)
+    fun showA act = PP.pretty 40 (PPSAct.ppAction act)
+    fun showS sol = PP.pretty 40 (ppSol (freshState ()) sol)
+  end)
+
+
+  val intP = many1 (sat Char.isDigit) >>=
+    return o always id o Int.fromString o String.concat o map Char.toString
+
+  fun transGraphC ctx =
+    (t "transgraph" >> ws >> intP >>=
+    (fn lvl => agent () >>=
+    (fn p => tr () >>
+        (Viz.viz (getEnv ctx) p lvl "graph-viz.dot" ;
+        return ctx))))
+
 
   fun warrantyC ctx =
     ((t "warranty" >> tr ()) >>= (fn _ =>
@@ -802,6 +841,7 @@ struct
     warrantyC      ::
     copyrightC     ::
     toggleSimpC    ::
+    transGraphC    ::
     []
 
   and statement (ctx : command_state) =
@@ -855,6 +895,7 @@ struct
 
   fun start () =
   let
+    val _ = PwbLog.pushLoggerStdOut "Bisim"
     val _ = start' ()
   in
     ()

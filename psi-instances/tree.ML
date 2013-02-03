@@ -25,13 +25,12 @@ struct
     (*(0,2),*)
     (*(2,3)*)
   (*]*)
-  (*
   val topology = [
     (0,1),
-    (1,2),
-    (2,3)
+    (0,2),
+    (1,2)
   ]
-  *)
+  (*
   val topology = [
     (0,1),
     (0,2),
@@ -41,6 +40,7 @@ struct
     (2,4),
     (3,4)
   ]
+  *)
 
 
   val top = map (fn (x,y) => (Int x, Int y)) topology
@@ -209,16 +209,12 @@ struct
   fun preUnify [] psiS sigma omega kapa = Either.RIGHT (sigma,psiS,omega,kapa)
     | preUnify ((avec, psi, [OutputConn (Init (Int n), Name x)])::cs) psiS sigma omega kapa =
         preUnify  cs psiS sigma ((n, x)::omega) kapa
-        (*let val subst = (x, Init (Int n)) in*)
-            (*preUnify (substCstr subst cs) psiS (composeSubst sigma subst) kapa*)
-        (*end*)
     | preUnify ((avec, psi, [OutputConn (Init (Int _), Init (Int _))])::cs) psiS sigma omega kapa =
         undef "Undefined: init < init"
     | preUnify ((avec, psi, [OutputConn (Name _, Init (Int _))])::cs) psiS sigma omega kapa =
         undef "Undefined: x < init"
     | preUnify ((avec, psi, [OutputConn (Name _, Name _)])::cs) psiS sigma omega kapa =
         undef "Undefined: x < y"
-
     | preUnify ((avec, psi, [InputConn (Name x, Init (Int m))])::cs) psiS sigma omega kapa =
         preUnify cs psiS sigma omega ((x, m)::kapa)
     | preUnify ((avec, psi, [InputConn (Init (Int _), Init (Int _))])::cs) psiS sigma omega kapa =
@@ -234,19 +230,52 @@ struct
         if x = y then preUnify cs psiS sigma omega kapa
         else Either.LEFT cond
 
-        (*
-        if x = y
-            then preUnify cs psiS sigma kapa
-            else
-                if L.fresh x avec andalso L.fresh y avec
-                    then preUnify (substCstr (x,Name y) cs) psiS (composeSubst sigma (x,Name y)) kapa
-                    else Either.LEFT cond
-                    *)
-
     | preUnify ((avec, psi, [c])::cs) psiS sigma omega kapa = Either.LEFT c
     | preUnify _ _ _ _ _ = Err.error "This shoud not happen"
 
 
+  val symtop = topology @ map Tpl.swap topology
+
+  fun subset x y = x |> all (fn xm => Lst.member xm y)
+
+  fun solve' cs =
+  let
+    val m = preUnify (flattenConstraints cs) Top [] [] []
+    (* omega - output conn (init(n) < x)
+     * kapa - input conn (x > init(n) ) *)
+    fun getO omega =
+      (case omega of
+            [(n,x)] => (n,x)
+          | _ => Err.undefined "More than one output conn in solve'")
+  in
+    m <//bindE//> (fn (sigma,psi,omega,kapa) =>
+        case (null omega, null kapa) of
+             (false, true) => let val (n,x) = getO omega in
+               RIGHT ((x,Init (Int n))::sigma,psi) end
+           | (true, false) =>
+               let
+                 val cand = kapa |>
+                    map (fn (_,i) => List.filter (fn (x,y) => y = i) topology) |>
+                    map (map fst)
+                 val x = kapa |> map fst |> hd
+               in
+                 if null cand then LEFT (ChEq (Int 0, Int 0))
+                 else RIGHT ((x, Init (Int (hd $ hd cand)))::sigma, psi)
+               end
+           | (false,false) =>
+               let
+                 val (n,x) = getO omega
+                 val t = topology |> List.filter (fn (x,_) => n = x) |> map snd
+                 val k = map snd kapa
+               in
+                 if k <//subset//> t then RIGHT ((x, Init(Int n))::sigma,psi)
+                 else LEFT (ChEq (Int 0, Int 0))
+               end
+           | (true, true) => RIGHT (sigma, psi)
+    )
+  end
+
+    (*
   fun solve' cs =
   let
     val m = preUnify (flattenConstraints cs) Top [] [] []
@@ -278,6 +307,7 @@ struct
         end
     )
   end
+  *)
 
 
   fun solve cs =
@@ -309,6 +339,10 @@ structure SymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = PsiPiInstance.Inst
   structure Constraint = PiSymbolicInstanceRequirements.Constraint
+  type solution =
+    ( Inst.condition list list
+        , ((Inst.name * Inst.term) list * Inst.assertion) list
+        ) Either.either
   val solve            = PiSymbolicInstanceRequirements.solve
 end;
 
@@ -318,7 +352,7 @@ struct
   structure Constraint = PiSymbolicInstanceRequirements.BisimConstraint
   val solve =
     case PiSymbolicInstanceRequirements.solveBisim of
-         NONE => (fn pp => fn c => Either.LEFT [])
+         NONE => (fn c => Either.LEFT [])
        | SOME s => s
 end;
 
