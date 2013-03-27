@@ -32,7 +32,9 @@ struct
 
   fun printSat numVars clauses vars =
     (print ("s cnf 1 " ^ (Int.toString numVars) ^ " " ^ (Int.toString clauses) ^ "\n");
-    forall (fn v => print ("v " ^ itos v ^ "\n")) vars)
+    print "v";
+    forall (fn v => print (" " ^ itos v)) vars;
+    print "\n")
 
   fun printUnsat numVars clauses =
     print ("s cnf 0 " ^ (Int.toString numVars) ^ " " ^ (Int.toString clauses) ^ "\n");
@@ -47,7 +49,7 @@ struct
     val timer = Timer.startCPUTimer ()
     val res = PwbSATSolver.sat cnf
     val {usr=usr,sys=sys} = Timer.checkCPUTimer timer
-    val secs = Time.toReal usr
+    val secs = Time.toReal usr + Time.toReal sys
   in
     case res of
          NONE => 
@@ -62,7 +64,7 @@ struct
     OS.Process.exit (OS.Process.failure)
 
   fun start () =
-    main () handle err => (print (exnMessage err); exitFail ())
+    main () handle err => (print (exnMessage err); print "\n"; exitFail ())
 end;
 
 PwbSml.restoreOutput ();
