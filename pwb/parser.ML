@@ -324,6 +324,15 @@ struct
 end;
 
 
+structure StringParser =
+struct
+  structure P = Parser(StringStream)
+  open P
+
+  fun parseString p s = parse p (StringStream.make s)
+end;
+
+
 structure ParserStreamIO: PARSER_STREAM =
 struct
   open Missing
@@ -360,5 +369,4 @@ struct
 
   fun isEnd (s,_) = TextIO.StreamIO.endOfStream s
 end;
-
 

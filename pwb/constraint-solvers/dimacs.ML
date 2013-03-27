@@ -46,18 +46,20 @@ struct
   fun dimacs () =
                     (comment () </sepby/> eol) >> eol >>
                     format () >>=
-    (fn (vs,cls) => eol >> clauses ())
+    (fn (vs,cls) => eol >> clauses () >>=
+    (fn cnf => return (vs, cls, cnf)))
 end;
 
 structure DIMACSFileParser =
 struct
   structure P = Parser(ParserStreamIO)
   structure DP = DIMACSParser(P)
+  open DP
+
+  fun parseStream ins = P.parse (DP.dimacs ()) (ParserStreamIO.make ins)
 
   fun parseFile filename =
-    MissingIO.withOpenFile filename (fn ins =>
-        P.parse (DP.dimacs ()) (ParserStreamIO.make ins))
-
+    MissingIO.withOpenFile filename parseStream
 end;
 
 

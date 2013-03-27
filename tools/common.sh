@@ -7,5 +7,5 @@ SML_OPTS=-q
 
 
 CC=gcc
-LDFLAGS="-lpolyml -lpolymain"
+LDFLAGS="-L/opt/local/lib -lpolyml -lpolymain -Wl,-no_pie"
 CFLAGS=

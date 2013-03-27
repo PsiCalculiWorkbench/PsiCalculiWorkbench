@@ -1,7 +1,7 @@
 
 structure MissingIO :
 sig
-  val withOpenFile  : string -> (TextIO.instream -> unit) -> unit
+  val withOpenFile  : string -> (TextIO.instream -> 'a) -> 'a
   val withWriteFile : string -> (TextIO.outstream -> unit) -> unit
   val withOpenString: string -> (TextIO.instream -> unit) -> unit
   val printErr : string -> unit
@@ -23,10 +23,10 @@ struct
   fun withOpenFile fileName handler =
   let
     val fh = TextIO.openIn fileName
-    val () = handler fh
+    val res = handler fh
     val () = TextIO.closeIn fh
   in
-    ()
+    res
   end
 
   fun withWriteFile fileName handler =
