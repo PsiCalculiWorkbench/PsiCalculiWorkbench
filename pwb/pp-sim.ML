@@ -36,7 +36,7 @@ struct
       if null avec
       then text " "
       else
-          text "(\\"
+          text "(new "
                </join/> filledCommaSep (map n avec)
                </join/> text ")"
 
