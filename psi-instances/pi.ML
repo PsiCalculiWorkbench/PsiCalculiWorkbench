@@ -204,7 +204,12 @@ struct
         in
           SOME (subst (Imp (c,c')) (findE c))
         end)
-       | _ => NONE) :: []
+       | _ => NONE) :: 
+
+    (fn (Forall (x, True)) => SOME True
+      | _ => NONE) ::
+       
+       []
 
   val trivialConditionRules =
     (fn (StImp (psi,psi')) => SOME True
@@ -340,7 +345,7 @@ struct
         else SOME (l::m)
     | extendM m (l as (Imp (FreshP _, False))) = SOME (l::m)
     | extendM m False = NONE
-    | extendM _ x = (Err.undefined "Pi.extendM")
+    | extendM _ x = (PolyML.print x; Err.undefined "Pi.extendM")
 
   fun modelRules m =
     [fn l =>
@@ -467,6 +472,7 @@ struct
                        @ simplificationRules
                        @ forallEliminationRules) c
     val c    = rewrite (freshnessRule c) c
+    val c    = rewrite forallEliminationRules c
     val c    = cnf c
     val cnf  = cnfToList c
     val sol  = dpllSAT [] cnf

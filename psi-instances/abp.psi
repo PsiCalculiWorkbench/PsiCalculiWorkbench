@@ -18,8 +18,8 @@ Receiver(o, ik, ol, b) <=
 ;
 
 DataMedium(is,or) <=
-    is(msgggg).
-    case T : 'or<msgggg>.DataMedium<is,or>
+    is(msg).
+    case T : 'or<msg>.DataMedium<is,or>
       [] T : 'or<"ERR">.DataMedium<is,or>
 ;
 
