@@ -199,22 +199,22 @@ end;
 
 
 functor PPClause(A : sig
-                        structure PP    : PRETTY_PRINTER
-                        structure Cl    : PSI_CLAUSE
-                        structure PPPsi : PSI_PRETTY_PRINTER
-                        sharing PP = PPPsi.PP
-                        sharing Cl.Psi = PPPsi.Psi
-                      end):
-                      sig
-                        structure PP    : PRETTY_PRINTER
-                        structure Cl    : PSI_CLAUSE
-                        structure PPPsi : PSI_PRETTY_PRINTER
-                        sharing PP = PPPsi.PP
-                        sharing Cl.Psi = PPPsi.Psi
+  structure PP    : PRETTY_PRINTER
+  structure Cl    : PSI_CLAUSE
+  structure PPPsi : PSI_PRETTY_PRINTER
+  sharing PP = PPPsi.PP
+  sharing Cl.Psi = PPPsi.Psi
+end):
+sig
+  structure PP    : PRETTY_PRINTER
+  structure Cl    : PSI_CLAUSE
+  structure PPPsi : PSI_PRETTY_PRINTER
+  sharing PP = PPPsi.PP
+  sharing Cl.Psi = PPPsi.Psi
 
-                        val ppClause        : Cl.clause -> PP.document
-                        val ppClauseFormals : Cl.clause -> PP.document
-                      end =
+  val ppClause        : Cl.clause -> PP.document
+  val ppClauseFormals : Cl.clause -> PP.document
+end =
 struct
   open A open PP open Missing
   structure PPA = PrettyPrinterAux(PP) open PPA
@@ -222,7 +222,7 @@ struct
   (*
     A(x,y,..)
   *)
-  fun ppClauseFormals (a,xvec,p) =
+  fun ppClauseFormals (Cl.Clause (a,xvec,p)) =
     (PPPsi.ppConstant a) 
                 </join/> text "("
                 </join/> filledCommaSep (map PPPsi.n xvec)
@@ -232,8 +232,8 @@ struct
   (*
     A(x,y,..) <= P
   *)
-  fun ppClause (a,xvec,p) =
-        ppClauseFormals (a,xvec,p)
+  fun ppClause (Cl.Clause (a,xvec,p)) =
+        ppClauseFormals (Cl.Clause (a,xvec,p))
         </sp/> text "<="
             </join/> group (nest 2 (line </join/> PPPsi.ppAgent p))
 

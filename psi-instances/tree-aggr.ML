@@ -278,7 +278,7 @@ struct
     | preUnify ((avec, psi, [CollectC cl])::cs) psiS sigma omega kapa =
         if psi </entails/> (CollectC cl)
             then preUnify cs psiS sigma omega kapa
-            else Either.LEFT (CollectC cl)
+            else Either.LEFT "collect is not entailed"
     | preUnify ((avec, psi, [OutputConn (Init (Int n), Name x)])::cs) psiS sigma omega kapa =
         preUnify  cs psiS sigma ((n, x)::omega) kapa
         (*let val subst = (x, Init (Int n)) in*)
@@ -304,45 +304,12 @@ struct
         (* all names are distinct (this gives a channel equivalence of identity
          * on names (diagonal = reflexive relation) *)
         if x = y then preUnify cs psiS sigma omega kapa
-        else Either.LEFT cond
+        else Either.LEFT "Names are not the same"
 
-    | preUnify ((avec, psi, [c])::cs) psiS sigma omega kapa = Either.LEFT c
+    | preUnify ((avec, psi, [c])::cs) psiS sigma omega kapa = Either.LEFT ""
     | preUnify _ _ _ _ _ = Err.error "This shoud not happen"
 
 
-    (*
-  fun solve' cs =
-  let
-    val m = preUnify (flattenConstraints cs) [] [] [] []
-  in
-    m |> either LEFT (fn (sigma,psi,omega,kapa) =>
-        let
-          val symtop = topology @ map Tpl.swap topology
-          val cand = kapa |>
-            map (fn (_,i) => List.filter (fn (x,y) => y = i) topology) |>
-            map (map fst)
-          val is =
-            if null cand then [] else
-                tl cand |> List.foldr
-                (fn (a, b) => List.filter (fn x => Lst.member x a) b)
-                (hd cand)
-          val _ = print "\n\n"
-          val _ = PolyML.print omega
-          val _ = PolyML.print kapa
-          val _ = PolyML.print is
-        in
-          if null kapa then RIGHT (sigma, psi)
-          else if null is then LEFT (ChEq (Int 0, Int 0))
-          else if null omega then RIGHT ((fst (hd kapa), Init (Int (hd is)))::sigma, psi)
-          else let val x = fst (hd omega) val n = snd (hd omega)
-               in if Lst.member x is
-                    then RIGHT ((n, Init (Int x))::(fst (hd kapa), Init (Int x))::sigma, psi)
-                    else LEFT (ChEq (Int 0, Int 0))
-               end
-        end
-    )
-  end
-  *)
   val symtop = topology @ map Tpl.swap topology
 
   fun subset x y = x |> all (fn xm => Lst.member xm y)
@@ -368,7 +335,7 @@ struct
                     map (map fst)
                  val x = kapa |> map fst |> hd
                in
-                 if null cand then LEFT (ChEq (Int 0, Int 0))
+                 if null cand then LEFT "null cand"
                  else RIGHT ((x, Init (Int (hd $ hd cand)))::sigma, psi)
                end
            | (false,false) =>
@@ -378,19 +345,13 @@ struct
                  val k = map snd kapa
                in
                  if k <//subset//> t then RIGHT ((x, Init(Int n))::sigma,psi)
-                 else LEFT (ChEq (Int 0, Int 0))
+                 else LEFT ""
                end
            | (true, true) => RIGHT (sigma, psi)
     )
   end
 
-
-  fun solve cs =
-    case solve' cs of
-         Either.RIGHT (sigma,psi) => Either.RIGHT [(sigma, psi)]
-       | Either.LEFT phi    => Either.LEFT  [[phi]]
-
-  (*fun solve cs = Either.RIGHT [([], Top)]*)
+  fun solve cs = solve' cs
 
   structure BisimConstraint = SymBisimConstraint(PsiPiInstance)
 
@@ -414,10 +375,7 @@ structure SymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = PsiPiInstance.Inst
   structure Constraint = PiSymbolicInstanceRequirements.Constraint
-  type solution =
-    ( Inst.condition list list
-        , ((Inst.name * Inst.term) list * Inst.assertion) list
-        ) Either.either
+  type solution = (string , (Inst.name * Inst.term) list * Inst.assertion) Either.either
   val solve            = PiSymbolicInstanceRequirements.solve
 end;
 
@@ -527,8 +485,7 @@ struct
 
   fun parseResult p s =
     case Parser.parse (allP (delayed p)) (StringStream.make s) of
-         Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined "Pi.parseResult RIGHT x::y::zs"
+         Either.RIGHT (r,s) => Either.RIGHT r
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   fun parseName s = parseResult name s

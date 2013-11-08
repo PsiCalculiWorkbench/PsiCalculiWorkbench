@@ -8,7 +8,6 @@
         pwb/pp-sim,
         pwb/simulator,
         pwb/bisim,
-        pwb/cr,
         pwb/graph-viz,
         pwb/pwb-logger
 *)
@@ -73,13 +72,14 @@ struct
     structure Red = Red
     structure Tr = WSim.Tr
   end)
-  structure Bisim = Bisim(struct
-    structure WRed   = WRed
-    structure C      = SBCS.Constraint
-    structure SymPsi = SI
 
-    fun pp proc = PP.pretty 40 (PsiPP.ppAgent proc)
+  structure Bisim = WeakStrongBisim(struct
+    structure Psi  = Psi
+    structure Slv  = SCS
+    structure SPsi = SI
+    structure C    = SBCS.Constraint
   end)
+
   structure PPSAct = PPStrongAction(struct
     structure PP     = PP
     structure Act    = Sim.Tr.Act
@@ -191,15 +191,14 @@ struct
     val stream = ParserStreamIO.resetPos stream
     val (c,s) =
       (case parse st stream of
-         RIGHT [(ctx,s)] =>
+         RIGHT (ctx,s) =>
             if stEnd ctx
                 then (ctx,s)
                 else (interact ctx s)
-       | LEFT [(msg,s)] => (
+       | LEFT (msg,s) => (
             print "Syntax Error: "; print (parserFailMsg msg s); print "\n";
             interact ctx (discard s) )
-       | _ => Err.undefined "Command.interactiveStatements.parse default")
-
+       )
         handle
         (Err.Error msg) => (output ctx ("Error: " ^ msg); interact ctx (discard stream))
           | _ => (output ctx "Error occured"; interact ctx (discard stream))
@@ -308,6 +307,7 @@ struct
     | ppBisimConstraint ctx (Forall (x,c)) =
         text "forall " </sp/> PsiPP.n x </join/> text "." </breakableSp ctx/>
             ppBisimConstraint ctx c
+    | ppBisimConstraint ctx (Var x) = PsiPP.n x
   end
 
   fun ppBisimDisjList ctx l =
@@ -353,11 +353,10 @@ struct
     sl sol
   end
 
-  fun ppSols ctx sols =
-    ((fn RIGHT sol' => group $ nest 2 $ sep (text "," </join/> line)
-                (map (ppSol ctx) sol')
-      | _ => text "No solution found")
-      sols)
+  fun ppSols ctx sols = 
+    case sols of
+         RIGHT sol => ppSol ctx sol
+       | LEFT msg => text "No solution found: " </join/> text msg
 
   fun ppDescr msg doc =
     text msg </join/> (nest 2 (line </join/> doc))
@@ -369,7 +368,7 @@ struct
                 nest 2 ( line </nl/>
                 ppDescr "Source:" (ppAgent ctx sourceAgent) </nl/>
                 ppDescr "Constraint:" (ppConstraint ctx c) </nl/>
-                ppDescr "Solution:" (ppSols ctx sol) </nl/>
+                ppDescr "Solution:" (ppSols ctx (RIGHT sol)) </nl/>
                 ppDescr "Derivative:" (ppAgent ctx agent)
             ))
 
@@ -423,7 +422,7 @@ struct
     (fn a =>    clauseArgs () >>=
     (fn xvec => t "<=" >>
                 agent () >>=
-    (fn p =>    return (a,xvec,p) )))
+    (fn p =>    return (Cl.Clause (a,xvec,p)) )))
 
 
   fun parseLetClauses ctx =
@@ -467,7 +466,7 @@ struct
   fun checkInvocation env (a : string,mvec) =
   let
     val clauses = Env.find env a
-    val cl = List.find (fn (a',xvec,p) =>
+    val cl = List.find (fn (Cl.Clause (a',xvec,p)) =>
                 (a = a') andalso (length xvec = length mvec)) clauses
   in
     maybe
@@ -479,7 +478,7 @@ struct
         cl
   end
 
-  fun checkInvocations env (a,xvec,p) =
+  fun checkInvocations env (Cl.Clause (a,xvec,p)) =
     lefts $ map (checkInvocation env) (invocations p)
 
   (*
@@ -496,7 +495,7 @@ struct
 
   fun checkDroped env cls =
     map (checkDrop env)
-        (nubBy (op=) $ map (fn (a,_,_) => a) cls)
+        (nubBy (op=) $ map (fn (Cl.Clause (a,_,_)) => a) cls)
 
 
   fun ppInvocation (a,mvec) =
@@ -512,7 +511,7 @@ struct
         PP.text "Invocation" </PPAux.sp/> ppInvocation inv
                              </PPAux.sp/> PP.text "is not guarded."
 
-  fun checkGuardedInvocations ctx env (a,xvec,p) =
+  fun checkGuardedInvocations ctx env (Cl.Clause (a,xvec,p)) =
     lefts $ map (checkGuarded ctx env) (invocations p)
 
 
@@ -520,9 +519,9 @@ struct
   let
     val env  = getEnv ctx
     (* drop all the read clauses from the environment *)
-    val dropedEnv = List.foldr (fn ((a,_,_),e) => Env.remove e a) env cls
+    val dropedEnv = List.foldr (fn (Cl.Clause (a,_,_),e) => Env.remove e a) env cls
     (* extend the environment with read clauses *)
-    val env' = List.foldr (fn ((cl as (a,_,_)),e) => Env.extend e a cl)
+    val env' = List.foldr (fn ((cl as Cl.Clause (a,_,_)),e) => Env.extend e a cl)
                     dropedEnv cls
     val inv = List.concat $ map (checkInvocations env') cls
     val closed = lefts $ map (checkClauseClosed ctx) cls
@@ -669,10 +668,9 @@ struct
     val tr = reduce (getEnv ctx) agent Sim.Constraint.unit 
     val transitions = onlySolv tr
 
-    val transitions = transitions |> flatmap
-        (fn (tr as (p, alpha, c, RIGHT sol, p')) =>
-            ( map (fn (subst, psi) =>
-                (psi, agent, alpha, c, RIGHT sol, Psi.subst p' subst ))) sol
+    val transitions = transitions |> map
+        (fn (p, alpha, c, RIGHT (subst, psi), p') =>
+                (psi, agent, alpha, c, (subst,psi), Psi.subst p' subst)
           | _ => Err.undefined "Command.stepAgentC.transitions LEFT")
 
     val n        = List.length transitions
@@ -685,7 +683,7 @@ struct
         (fn (n, trans) =>
             (()
             ; outputPP ctx (ppTransSim ctx ppAlpha n trans)
-            ; nl ctx;nl ctx
+            ; nl ctx; nl ctx
             )
         ) nTrans
   in
@@ -728,7 +726,7 @@ struct
                                         (isEof o fst)
                                         stream
                     in
-                      RIGHT [(ctx,s)] (* unmodified ctx *)
+                      RIGHT (ctx,s) (* unmodified ctx *)
                     end
                 )
     )
@@ -747,41 +745,26 @@ struct
     | cnfToList c = [disjToList c]
 
 
-  fun checkBisim ctx (p,q) =
+  fun checkSymbolicBisim ctx bisim (p,q) =
   let
-    val b = Bisim.bisim (getEnv ctx) (p,q)
-    val sb = (Bisim.C.simplify (Tpl.fst b),
-              map (fn (pq,c) => (pq, Bisim.C.simplify c)) (Tpl.snd b))
-    (*
-    val sb = (Bisim.C.cnf (Tpl.fst sb),
-              map (fn (pq,c) => (pq, Bisim.C.cnf c)) (Tpl.snd sb))
-    val ll = cnfToList (Tpl.fst sb)
-    *)
-
+    val b = bisim (getEnv ctx) p q
     val res = SBCS.solve (Tpl.fst b)
   in
-    ( (* outputPPPlain ctx $ ppBisim ctx (if (!simplBisim) then sb else b)  ; *)
-        (*PolyML.print sb;*)
-
-     (* ; outputPP ctx $ ppBisimCNFList ctx ll *)
-      (*outputPP ctx $ PP.text ("Number of /\\ is " ^ (Int.toString $ length ll))
-      ; *)
-     output ctx "\n\n";
+     (output ctx "\n\n";
      outputPP ctx $ ppSols ctx res;
-     output ctx "\n";
-     ()
+     output ctx "\n"; ()
      )
   end
 
 
-  fun bisimC ctx =
+  fun bisimC opString bisim ctx =
                 agent () >>=
-    (fn p =>    t "~" >>
+    (fn p =>    t opString >>
                 agent () >>=
     (fn q =>    tr () >>
                 (if useBisim
-                   then checkBisim ctx (p,q)
-                   else output ctx "NOTE: Bisimulation checking is not available.";
+                   then checkSymbolicBisim ctx bisim (p,q)
+                   else output ctx "NOTE: (Bi)simulation checking is not available.";
                    return ctx) ))
 
 
@@ -806,15 +789,6 @@ struct
         (Viz.viz (getEnv ctx) p lvl "graph-viz.dot" ;
         return ctx))))
 
-
-  fun warrantyC ctx =
-    ((t "warranty" >> tr ()) >>= (fn _ =>
-        (output ctx Copyright.warranty ; return ctx)))
-
-  fun copyrightC ctx =
-    ((t "copyright" >> tr ()) >>= (fn _ =>
-        (output ctx Copyright.copyright ; return ctx)))
-
   fun toggleSimpC ctx =
     ((t "toggleSimp" >> tr ()) >>= (fn _ => ((simplBisim := not (!simplBisim)); return ctx)))
 
@@ -826,22 +800,53 @@ struct
     (fn _ => (return (setEof ctx)))
 
 
+  val helpString =
+    "help                      - prints this help message\n" ^
+    "env                       - prints the current process environment\n" ^
+    "drop <procname>           - removes clauses from the environment with <procname>\n" ^
+    "input \"filename\"          - reads commands from a file filename\n" ^
+    "sstep <proc>              - enters the symbolic simulator for the process <proc>;\n" ^
+    "                            enter a number to select an agent to follow, b to backtrack, and q to exit\n" ^
+    "wsstep <proc>             - enters the weak symbolic simulator; accepts the same commands as sstep\n" ^
+    "<proc> ~ <proc>           - computes the weak bisimulation\n" ^
+    "<proc> ~w <proc>          - computes the weak bisimulation (alias for the above)\n" ^
+    "<proc> ~s <proc>          - computes the strong bisimulation\n" ^
+    "<proc> <w <proc>          - computes the weak simulation\n" ^
+    "<proc> <s <proc>          - computes the strong simulation\n" ^
+    "transgraph <depth> <proc> - computes the transition graph for <proc>, follows at most <depth> transitions\n" ^
+    "                            writes this graph to graphviz.dot in the current directory\n" ^
+    "agent <proc>              - pretty prints the process <agent>\n" ^
+    "def { <procname>(<formals>) <= <proc>; ... } - adds to the environment the clauses specified\n" ^
+    "<procname>(<formals>) <= <proc> - the same as above, but only for one clause"
+
+  fun simpleWS () = many (sat Char.isSpace)
+  fun simpleWSNoNL () = 
+    many (sat (fn #"\n" => false | c => Char.isSpace c))
+
+  fun helpC ctx =
+    ((simpleWS () >> str "help" >> 
+     simpleWSNoNL () >> chr #"\n" >>= (fn _ =>
+        (output ctx helpString ; return ctx))))
+
   fun commands () =
-    exitC          ::
-    clauseC        ::
-    letClausesC    ::
-    redundantDelim ::
-    envC           ::
-    dropC          ::
-    inputC         ::
-    sstepC         ::
-    wsstepC        ::
-    agentC         ::
-    bisimC         ::
-    warrantyC      ::
-    copyrightC     ::
-    toggleSimpC    ::
-    transGraphC    ::
+    helpC                          :: 
+    exitC                          :: 
+    clauseC                        :: 
+    letClausesC                    :: 
+    redundantDelim                 :: 
+    envC                           :: 
+    dropC                          :: 
+    inputC                         :: 
+    sstepC                         :: 
+    wsstepC                        :: 
+    agentC                         :: 
+    bisimC "~s" Bisim.Strong.bisim :: 
+    bisimC "~w" Bisim.Weak.bisim   :: 
+    bisimC "<s" Bisim.Strong.sim   :: 
+    bisimC "<w" Bisim.Weak.sim     :: 
+    bisimC "~" Bisim.Weak.bisim    :: 
+    toggleSimpC                    :: 
+    transGraphC                    :: 
     []
 
   and statement (ctx : command_state) =
@@ -867,10 +872,8 @@ struct
                 t "input" >> PsiB.literal >>=
     (fn n =>    ws >> tr () >>=
     (fn _ =>    case (inputFile ctx n) of
-                       RIGHT ((ctx,s)::_) => return ctx
-                     | LEFT ((err,s)::_)  => error (parserFailMsg err s)
-                     | RIGHT _ => Err.undefined "Command.inputC RIGHT []"
-                     | LEFT  _ => Err.undefined "Command.inputC LEFT []"
+                       RIGHT (ctx,s) => return ctx
+                     | LEFT (err,s)  => error (parserFailMsg err s)
     ))
 
 

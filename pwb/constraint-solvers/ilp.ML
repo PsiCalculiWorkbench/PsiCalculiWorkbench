@@ -129,9 +129,8 @@ struct
           let
             val p = parse solParser (ParserStreamIO.make i)
             val v = case p of
-                         RIGHT ((res,_)::_) => RIGHT res
-                       | RIGHT _ => LEFT ""
-                       | LEFT ((Error msg,_)::_) => LEFT msg
+                         RIGHT (res,_) => RIGHT res
+                       | LEFT (Error msg,_) => LEFT msg
                        | LEFT _ => LEFT ""
             val _ = result := v
           in

@@ -51,7 +51,7 @@ struct
   fun eqA _ (a,b) = a = b
 
 
-  fun brReceive (m,n) = Err.undefined 
+  fun brReceive (m,n) = Err.undefined
     "This intance is not meant to be used with broadcast semantics"
 
   fun brTransmit (m,n) = Err.undefined
@@ -152,23 +152,18 @@ struct
     List.all (fn b => L.fresh b avec) bvec
 
   fun mgu [] sigma = Either.RIGHT sigma
-      (* (*@  \textsc{(TrT)} case @*) *)
     | mgu ((avec, Unit,  [True] )::cs) sigma =
       mgu cs sigma
-      (* (*@  \textsc{(Decom)} case @*) *)
     | mgu ((avec, Unit, [Eq (NextFreq a, NextFreq b)])::cs)
           sigma =
         mgu ((avec, Unit, [Eq (a,b)])::cs) sigma
-      (* (*@  \textsc{(Swap)} case @*) *)
     | mgu ((avec, Unit, [Eq (NextFreq a, Name b)])::cs)
           sigma =
         mgu ((avec, Unit, [Eq (Name b, NextFreq a)])::cs)
             sigma
-      (* (*@  If the name is on the left hand side of the channel equivalence @*) *)
     | mgu ((avec, Unit, [Eq (Name a, n)])::cs) sigma =
-       if Name a = n then mgu cs sigma (* (*@  \textsc{(TrN)} case @*) *)
+       if Name a = n then mgu cs sigma
          else
-           (* (*@ if $a\freshin\ve{a} \;\land\; \ve{a}\freshin N \;\land\; a\freshin N $ @*) *)
            if L.fresh a avec andalso
               freshL avec (supportT n) andalso
               L.fresh a (supportT n)
@@ -178,14 +173,14 @@ struct
                  * apply it to the residual *)
                mgu (Constraint.subst [(a, n)] cs)
                    (composeSubst sigma (a, n))
-             else (* otherwise (*@ \textsc{(Fail)} @*) *)
-               Either.LEFT [(Eq (Name a, n))]
+             else
+               Either.LEFT "One of the names is restricted"
     | mgu _ _ = Err.error "explode failed in fhss.ML"
 
   fun solve cs =
     case mgu (Lst.flatmapmix explode cs) [] of
-         Either.RIGHT sigma => Either.RIGHT [(sigma, Unit)]
-       | Either.LEFT phi    => Either.LEFT  [phi]
+         Either.RIGHT sigma => Either.RIGHT (sigma, Unit)
+       | Either.LEFT msg    => Either.LEFT  msg
 
 end;
 
@@ -203,7 +198,7 @@ structure FHSSSymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = FHSSPsiInstance.Inst
   structure Constraint = FHSSSymbolicInstanceRequisites.Constraint
-  type solution = (Inst.condition list list , ((Inst.name * Inst.term) list * Inst.assertion) list) Either.either
+  type solution = (string , (Inst.name * Inst.term) list * Inst.assertion) Either.either
   val solve            = FHSSSymbolicInstanceRequisites.solve
 end;
 
@@ -242,8 +237,7 @@ struct
 
   fun parseResult p s =
     case parse p (StringStream.make s) of
-         RIGHT ((r,s)::_) => RIGHT r
-       | RIGHT _ => Err.undefined "parseResult"
+         RIGHT (r,s) => RIGHT r
        | LEFT  _ => LEFT "Error parsing"
 
   fun term () =

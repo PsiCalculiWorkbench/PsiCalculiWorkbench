@@ -1,4 +1,12 @@
-(* uses pwb/missing, pwb/sort *)
+(* uses pwb/missing
+ *)
+
+
+signature SORT =
+sig
+  type sort
+  val eq: sort * sort -> bool
+end;
 
 
 signature UNSORTED_NOMINAL =
@@ -29,6 +37,15 @@ sig
   val atomSort  : atom -> AtomSort.sort
   val dataSort  : data -> DataSort.sort
 end;
+
+
+
+structure Unsorted =
+struct
+  datatype sort  = SORT
+  fun eq _ = true
+end;
+
 
 
 functor UnsortedToTrivialySortedNominal(N: UNSORTED_NOMINAL): NOMINAL =

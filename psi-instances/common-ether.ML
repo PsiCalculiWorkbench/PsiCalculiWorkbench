@@ -224,8 +224,8 @@ struct
     val sols = tr (([], []), Lst.flatmapmix explode cs)
   in
     case sols of
-         [] => Either.LEFT []
-       | _  => Either.RIGHT sols
+         [] => Either.LEFT "No solutions"
+       | s::_  => Either.RIGHT s
   end
 
   fun solveBisim _ = Err.undefined "bisim unimplemented"
@@ -246,7 +246,7 @@ structure CommonEtherSymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = CommonEtherPsiInstance.Inst
   structure Constraint = CommonEtherSymbolicInstanceRequisites.Constraint
-  type solution = (Inst.condition list list , ((Inst.name * Inst.term) list * Inst.assertion) list) Either.either
+  type solution = (string , (Inst.name * Inst.term) list * Inst.assertion) Either.either
   val solve            = CommonEtherSymbolicInstanceRequisites.solve
 end;
 
@@ -277,8 +277,7 @@ struct
 
   fun parseResult p s =
     case Parser.parse p (StringStream.make s) of
-         Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined "parseResult"
+         Either.RIGHT (r,s) => Either.RIGHT r
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   val name = Lex.identifier

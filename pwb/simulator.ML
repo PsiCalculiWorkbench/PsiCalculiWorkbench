@@ -120,7 +120,6 @@ signature SYMBOLIC_TRANSITION_CONSTRAINT =
 sig
   structure Inst : PSI_INSTANCE
 
-  (* Constraints used in the operational semantics *)
   type constraint = (Inst.name list * Inst.assertion * Inst.condition list) list
 
   include NOMINAL
@@ -226,14 +225,8 @@ sig
   structure Constraint : SYMBOLIC_TRANSITION_CONSTRAINT
   sharing Constraint.Inst = Inst
 
-  (* If constraint can't be solved, returns LEFT with a list of unsolvable
-   * conditions. If constraint can be solved then returns RIGHT with solutions
-   *)
   type solution =
-    ( Inst.condition list list (* counter examples *)
-        (*    [ ( sigma               ,       psi ) ] *)
-        , ((Inst.name * Inst.term) list * Inst.assertion) list (* solutions *)
-        ) Either.either
+    (string, (Inst.name * Inst.term) list * Inst.assertion) Either.either
 
   val solve : Constraint.constraint -> solution
 end;
@@ -256,8 +249,10 @@ functor PsiGuarded(P: SYMBOLIC_PSI) =
 struct
 local open P.Psi open P open Missing in
 
-  fun clauseP (_,_,p) = p
-  fun clauseArgs (_,xvec,_) = xvec
+  structure Cl = ClEnv.Cl
+
+  fun clauseP (Cl.Clause (_,_,p)) = p
+  fun clauseArgs (Cl.Clause (_,xvec,_)) = xvec
   fun clauseProcessesWithSameArity e a ar =
     ClEnv.find e a |>
     filter (fn cls => length (clauseArgs cls) = ar) |>
@@ -457,7 +452,7 @@ struct
   open A
   structure C = Sim.Constraint
 
-  fun onlySolv trs =
+  fun onlySolvable trs =
     List.filter (fn (tr as (_,_,_,s,_)) =>
         s |> either (const false) (const true)) trs
 
@@ -467,10 +462,10 @@ struct
         in (p, act, aggrC, Slv.solve aggrC, p') end)
 
   fun reduce env proc c =
-    Sim.reduce env proc |> solve c |> onlySolv
+    Sim.reduce env proc |> solve c |> onlySolvable
 
   fun reduceA env proc tAct c =
-    Sim.reduceA env proc tAct |> solve c |> onlySolv
+    Sim.reduceA env proc tAct |> solve c |> onlySolvable
 end;
 
 
@@ -717,7 +712,7 @@ in
         let
             val clauses = SI.ClEnv.find e a
             val valid = List.filter
-                            (fn (cl as (a, xvec, p)) =>
+                            (fn (cl as (Cl.Clause (a, xvec, p))) =>
                                 (List.length xvec = List.length mvec) andalso
                                 guarded e p andalso
                                 (Cl.support cl = [])
@@ -726,7 +721,7 @@ in
             case valid of
                 [] => []
               | _  => map (fn p => ([ (p,ac) ], INVOCATION)) $
-                          map (fn (a,xvec,p) =>
+                          map (fn (Cl.Clause (a,xvec,p)) =>
                                   P.subst p (Lst.zip xvec mvec)) valid
         end
       | inferINVOCATIONs _ _ = []

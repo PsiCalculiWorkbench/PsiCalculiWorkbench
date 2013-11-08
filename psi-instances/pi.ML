@@ -140,27 +140,26 @@ struct
   end
 
   structure L = NominalNameList(PsiPiInstance.Inst.Term)
-      (* struct type atom = name val new = new end) *)
 
-  fun mgu [] sigma = Either.RIGHT sigma                (*@ $\Box$ @*)
-    | mgu ((avec, Unit,  T::phis )::cs) sigma =        (*@ (\textsc{Tr2}) @*)
+  fun mgu [] sigma = Either.RIGHT sigma                
+    | mgu ((avec, Unit,  T::phis )::cs) sigma =        
       mgu ((avec, Unit,  phis )::cs) sigma
-    | mgu ((avec, Unit,  [] )::cs) sigma =             (*@ (\textsc{Tr2}') @*)
+    | mgu ((avec, Unit,  [] )::cs) sigma =             
       mgu cs sigma
     | mgu ((avec, Unit, (Eq (a,b))::phis)::cs) sigma =
-      if a = b                                         (*@ (\textsc{Tr1}) @*)
+      if a = b                                         
       then mgu ((avec, Unit, phis)::cs) sigma
       else
-        if L.fresh a avec andalso L.fresh b avec       (*@ (\textsc{Elim})@*)
+        if L.fresh a avec andalso L.fresh b avec       
             then mgu (Constraint.subst [(b,a)] ((avec, Unit, phis)::cs))
                      (composeSubst sigma (b,a))
-            else Either.LEFT [Eq (a,b)]                (*@ $\blacksquare$ @*)
+            else Either.LEFT "Either name is restricted"                
     | mgu _ _ = Err.undefined "Pi.mgu"
 
   fun solve cs =
     case mgu cs [] of
-         Either.RIGHT sigma => Either.RIGHT [(sigma, Unit)]
-       | Either.LEFT phi    => Either.LEFT  [phi]
+         Either.RIGHT sigma => Either.RIGHT (sigma, Unit)
+       | Either.LEFT msg    => Either.LEFT  msg
 
   structure BisimConstraint = SymBisimConstraint(PsiPiInstance)
 
@@ -505,10 +504,7 @@ structure SymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = PsiPiInstance.Inst
   structure Constraint = PiSymbolicInstanceRequirements.Constraint
-  type solution =
-    ( Inst.condition list list
-        , ((Inst.name * Inst.term) list * Inst.assertion) list
-        ) Either.either
+  type solution = (string , (Inst.name * Inst.term) list * Inst.assertion) Either.either
   val solve            = PiSymbolicInstanceRequirements.solve
 end;
 
@@ -557,8 +553,7 @@ struct
 
   fun parseResult p s =
     case Parser.parse p (StringStream.make s) of
-         Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined "Pi.parseResult RIGHT x::y::zs"
+         Either.RIGHT (r,s) => Either.RIGHT r
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   fun parseName s = parseResult name s

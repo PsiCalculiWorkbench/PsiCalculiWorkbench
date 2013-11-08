@@ -14,7 +14,7 @@ let
 in
   case (StringParser.parseString (Dimacs.dimacs ())) s of
        Missing.LEFT x => false
-     | Missing.RIGHT ((res,_)::_) =>
+     | Missing.RIGHT (res,_) =>
          res = (4, 3, [[1, 3, ~4], [4], [2, ~3]])
 end
 );

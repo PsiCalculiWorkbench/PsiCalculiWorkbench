@@ -56,7 +56,7 @@ struct
   fun testParseResult name p expected =
     PwbTestRunner.testTrue name 
         (fn () => p |> Either.either (const false) 
-                       (fn ((x,_)::_) => x = expected | _ => false))
+                       (fn (x,_) => x = expected))
 
 
   val res1 = parse (apply ( expr () )) (stream "1 - 2 * 3 + 4")

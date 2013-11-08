@@ -1,41 +1,34 @@
 
 
-Sender(i,ok,il,b) <= i(dataSend).SenderSend<i,ok,il,dataSend,b>;
+Sender(i,inp,out,b) <= i(data).SenderSend<i,inp,out,data,b>;
 
-SenderSend(i,ok,il,dataSend,b) <= 
-    'ok<"data(dataSend,b)">.
-    il(ackBit) .
-    case "b = ackBit"    : *tau*.Sender<i,ok,il,"~b">
-      [] "b = ~ackBit"   : *tau*.SenderSend<i,ok,il,dataSend,b>
-      [] "isErr(ackBit)" : *tau*.SenderSend<i,ok,il,dataSend,b>
-;
+SenderSend(i,inp,out,data,b) <= 'out<data, b>. inp(ackBit).
+    case "b = ackBit"   : Sender<i,inp,out,"~b">
+      [] "b = ~ackBit"  : SenderSend<i,inp,out,data,b>
+      [] "ERR = ackBit" : SenderSend<i,inp,out,data,b> ;
 
-Receiver(o, ik, ol, b) <=
-    ik(msg).
-    case "b = bit(msg)"  : 'o<"datum(msg)">.'ol<b>.Receiver<o,ik,ol,"~b">
-      [] "b = ~bit(msg)" : 'ol<"~b"> . Receiver<o,ik,ol,b>
-      [] "isErr(msg)"    : 'ol<"~b"> . Receiver<o,ik,ol,b>
-;
+Receiver(o, inp, out, b) <= inp(data, bit).
+    case "b = bit"   : 'o<data>.'out<b>.Receiver<o,inp,out,"~b">
+      [] "b = ~bit"  : 'out<"~bit"> . Receiver<o,inp,out,b>
+      [] "ERR = bit" : 'out<"~b"> . Receiver<o,inp,out,b> ;
 
-DataMedium(is,or) <=
-    is(msg).
-    case T : 'or<msg>.DataMedium<is,or>
-      [] T : 'or<"ERR">.DataMedium<is,or>
-;
+DataChan(inp,out) <= inp(data, bit).
+    case True : 'out<data, bit> .DataChan<inp,out>
+      [] True : 'out<ERR, ERR> .DataChan<inp,out> ;
 
-ResponseMedium(ir,os) <=
-    ir(b).
-    case T : 'os<b>.ResponseMedium<ir,os>
-      [] T : 'os<"ERR">.ResponseMedium<ir,os>
-;
+ResponseChan(inp,out) <= inp(b).
+    case True : 'out<b>    .ResponseChan<inp,out>
+      [] True : 'out<"ERR">.ResponseChan<inp,out> ;
 
-System(i,o,bs,br) <=
-    (new ok,ik,ol,il)(
-        Sender<i,ok,il,bs> |
-        Receiver<o,ik,ol,br> |
-        DataMedium<ok,ik> |
-        ResponseMedium<ol,il>
-    ) ;
+ABP(i,o,bitS,bitR) <= (new SnDc,DcRe,ReRc,RcSn)(
+    Sender<i,RcSn,SnDc,bitS>   | DataChan<SnDc,DcRe> |
+    Receiver<o,DcRe,ReRc,bitR> | ResponseChan<ReRc,RcSn> ) ;
 
-Buffer(i,o) <= i(x).'o<x>.Buffer<i,o>;
+Buffer(i,o) <= i(x).'o<x>;
+
+RecBuffer(i,o) <= i(x).'o<x>.RecBuffer<i,o>;
+
+
+ABP2(i,o,sb,rb) <= (new RcSn, SnRc) (
+    Sender<i,RcSn,SnRc,sb> | Receiver<o,SnRc,RcSn,rb> );
 

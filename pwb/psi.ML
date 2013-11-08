@@ -1,7 +1,5 @@
 (* uses pwb/missing,
-        pwb/nominal,
-        pwb/env,
-        pwb/sort
+        pwb/nominal
 *)
 
 signature PSI_INSTANCE =
@@ -204,11 +202,12 @@ signature PSI_CLAUSE =
 sig
   structure Psi: PSI
 
-  type clause =
-    string * Psi.Inst.name list * Psi.psi
+  datatype clause =
+    Clause of string * Psi.atom list * Psi.psi
+    (*string * Psi.Inst.name list * Psi.psi*)
 
   include NOMINAL
-    where type atom = Psi.Inst.name
+    where type atom = Psi.atom
     where type data = clause
 
 end;
@@ -221,8 +220,8 @@ struct
   structure AtomSort = Psi.Inst.Sort
   structure DataSort = struct datatype sort = ClauseSort fun eq _ = true end
 
-  type clause =
-    string * P.Inst.name list * P.psi
+  datatype clause =
+    Clause of string * P.Inst.name list * P.psi
 
   type atom = P.Inst.name
   type data = clause
@@ -239,23 +238,23 @@ struct
 
   structure L = NominalNameList(Psi.Inst.Term)
 
-  (* swaping does not effect the 'a' *)
-  fun swap pi (a, xvec, p) =
-    (a, L.swap pi xvec, P.swap pi p)
-
-  fun support (a,xvec,p) =
-    Lst.minus (P.support p) xvec
-
-  fun fresh n cl = not(Lst.member n (support cl))
+  fun swap pi (Clause (a, xvec, p)) = Clause (a, L.swap pi xvec, P.swap pi p)
+  fun support (Clause (a, xvec, p)) = Lst.minus (P.support p) xvec
+  fun fresh n cl = not (Lst.member n (support cl))
 end;
 
 
 signature PSI_CLAUSE_ENVIRONMENT =
 sig
   structure Cl : PSI_CLAUSE
-  include ENVIRONMENT
-    where type key = string
-    where type value = Cl.clause
+  
+  type env
+
+  val extend : env -> string -> Cl.clause -> env
+  val remove : env -> string -> env
+  val find   : env -> string -> Cl.clause list
+  val dom    : env -> string list
+  val empty  : env
 end;
 
 functor PsiClauseEnvironment(C : PSI_CLAUSE) : PSI_CLAUSE_ENVIRONMENT =

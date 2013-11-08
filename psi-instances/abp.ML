@@ -11,18 +11,15 @@ struct
 
   type atom = name
 
+  datatype term 
+    = Neg of term
+    | Name of name
+    | Bottom | Error | Zero | One
 
-  datatype term = Data of term * term
-                | Bit of term
-                | Datum of term
-                | Neg of term
-                | Name of name
-                | Error | Zero | One
-
-  datatype condition = ChEq of term * term
-                     | Equal of term * term
-                     | IsError of term
-                     | TrueC
+  datatype condition
+    = ChEq of term * term
+    | Equal of term * term
+    | CTrue | CBottom
 
   datatype assertion = UnitAssr
 
@@ -30,7 +27,6 @@ struct
 
   fun compose (psi1,psi2)      = UnitAssr
   val unit                     = UnitAssr
-
 
   fun brReceive (m,n) = Err.undefined 
     "This intance is not meant to be used with broadcast semantics"
@@ -51,34 +47,30 @@ struct
   fun new xvec = newBasedOn genName xvec
 
   fun supportT (Name n) = [n]
-    | supportT (Bit t) = supportT t
-    | supportT (Datum t) = supportT t
     | supportT (Neg t) = supportT t
-    | supportT (Data (t1,t2)) = supportT t1 @ supportT t2
     | supportT Error = []
     | supportT Zero = []
     | supportT One = []
+    | supportT Bottom = []
 
   fun supportC (ChEq (t1,t2)) = supportT t1 @ supportT t2
-    | supportC (Equal (t1,t2)) =  supportT t1 @ supportT t2
-    | supportC (IsError t) = supportT t
-    | supportC TrueC = []
+    | supportC (Equal (t1,t2)) = supportT t1 @ supportT t2
+    | supportC CTrue = []
+    | supportC CBottom = []
 
   fun supportA psi = []
 
   fun swapT pi (Name n) = Name (swap_name pi n)
-    | swapT pi (Bit b) = Bit (swapT pi b)
-    | swapT pi (Datum b) = Datum (swapT pi b)
     | swapT pi (Neg b) = Neg (swapT pi b)
-    | swapT pi (Data (t1,t2)) = Data (swapT pi t1, swapT pi t2)
     | swapT pi Error = Error
     | swapT pi Zero = Zero
     | swapT pi One = One
+    | swapT pi Bottom = Bottom
 
   fun swapC pi (ChEq (t1,t2)) = ChEq (swapT pi t1, swapT pi t2)
     | swapC pi (Equal (t1,t2)) = Equal (swapT pi t1, swapT pi t2)
-    | swapC pi (IsError t) = IsError (swapT pi t)
-    | swapC pi TrueC = TrueC
+    | swapC pi CTrue = CTrue
+    | swapC pi CBottom = CBottom
 
   fun swapA pi psi  = psi
 
@@ -86,16 +78,11 @@ struct
   fun eqC _ (a,b) = a = b
   fun eqA _ (a,b) = a = b
 
-  fun reduceT' (Bit (Data (x, y))) = y
-    | reduceT' (Datum (Data (x, y))) = x
-    | reduceT' (Bit (Error)) = Error
-    | reduceT' (Neg (Error)) = Error
-    | reduceT' (Datum (Error)) = Error
-    | reduceT' (Neg (Neg b)) = b
+  fun reduceT' (Neg (Error)) = Bottom
+    | reduceT' (Neg (Neg (Name b))) = Name b
     | reduceT' (Neg (Zero)) = One
     | reduceT' (Neg (One)) = Zero
-    | reduceT' (Data (x,y)) = Data (reduceT' x, reduceT' y)
-    | reduceT' (Bit x) = Bit (reduceT' x)
+    | reduceT' (Neg (Bottom)) = Bottom
     | reduceT' (Neg x) = Neg (reduceT' x)
     | reduceT' x = x
 
@@ -106,39 +93,56 @@ struct
 
   val reduceT = fixReduceT
 
-  fun reduceC (ChEq (a,b)) = ChEq (a, b)
-    | reduceC (Equal (a,b)) = Equal (reduceT a, reduceT b)
-    | reduceC (IsError t) = IsError (reduceT t)
-    | reduceC TrueC = TrueC
+  fun reduceC' (Equal (Neg x, Neg y)) = Equal (x,y)
+    | reduceC' (Equal (Error, Neg x)) = CBottom
+    | reduceC' (Equal (Neg x, Error)) = CBottom
+    | reduceC' (Equal (Neg x, y)) =
+        if x = y then CBottom else Equal (Neg x, y)
+    | reduceC' (Equal (x, Neg y)) = 
+        if x = y then CBottom else Equal (x, Neg y)
+    | reduceC' (Equal (Bottom, _)) = CBottom
+    | reduceC' (Equal (_, Bottom)) = CBottom
+    | reduceC' (Equal (Error, Zero)) = CBottom
+    | reduceC' (Equal (Error, One)) = CBottom
+    | reduceC' (Equal (One, Error)) = CBottom
+    | reduceC' (Equal (Zero, Error)) = CBottom
+    | reduceC' (Equal (Zero, One)) = CBottom
+    | reduceC' (Equal (One, Zero)) = CBottom
+    | reduceC' (Equal (x, y)) = if x = y then CTrue else Equal (x,y)
+    | reduceC' phi = phi
 
+  fun reduceC phi = reduceC' phi
+
+  fun entails _ = Err.error "undefined entails"
+    (*
   fun entails (psi,c) = entails' (psi, reduceC c)
   and entails' (_, ChEq (Name a, Name b)) = a = b
     | entails' (_, Equal (a, b)) = a = b
-    | entails' (_, TrueC) = true
-    | entails' (_, IsError(Error)) = true
+    | entails' (_, CTrue) = true
     | entails' _ = false
+    *)
 
   fun reduceA psi = psi
-
 
   fun substT' sigma (Name n) =
     (case List.find (fn (x,_) => x = n) sigma of
            NONE       => Name n
          | SOME (_,t) => t)
-    | substT' sigma (Bit m) = Bit (substT' sigma m)
-    | substT' sigma (Datum m) = Datum (substT' sigma m)
-    | substT' sigma (Data (m,n)) = Data (substT' sigma m, substT' sigma n)
     | substT' sigma (Neg m) = Neg (substT' sigma m)
     | substT' sigma Zero = Zero
     | substT' sigma One = One
     | substT' sigma Error = Error
+    | substT' sigma Bttom = Bottom
 
   fun substT sigma t = substT' sigma t |> reduceT
 
-  fun substC sigma (ChEq (a,b)) = ChEq (substT sigma a, substT sigma b)
-    | substC sigma (Equal (a,b)) = Equal (substT sigma a, substT sigma b)
-    | substC sigma (IsError t) = IsError (substT sigma t)
-    | substC sigma TrueC = TrueC
+  fun substC' sigma (ChEq (a,b)) = ChEq (substT sigma a, substT sigma b)
+    | substC' sigma (Equal (a,b)) = Equal (substT sigma a, substT sigma b)
+    | substC' sigma CTrue = CTrue
+    | substC' sigma CBottom = CBottom
+
+  fun substC sigma phi = substC' sigma phi |> reduceC
+
 
   fun substA sigma psi = psi 
 
@@ -208,7 +212,6 @@ end;
 structure PsiPiInstance = Psi(PiInstanceRequirements)
 
 
-
 structure PiSymbolicInstanceRequirements =
 struct
   open Missing
@@ -239,182 +242,53 @@ struct
   fun undef msg = Err.error msg
   fun substCstr s cs = Constraint.subst [s] cs
 
-  fun supportCS cs = cs |> flatmap
-    (fn (avec,_,[cond]) => Lst.minus (supportC cond) avec
-      | _ => Err.undefined "undefined case when calling supportCS" )
-
   fun termFresh t names = all ((flip L.fresh) names) $ supportT t
 
 
-  fun unify _ [] sigma = Either.RIGHT (sigma,UnitAssr)
+  fun unify  [] sigma = Either.RIGHT (sigma, UnitAssr)
 
-    | unify namesAvoid ((avec,psi,[TrueC])::cs) sigma =
-        unify namesAvoid cs sigma
+    | unify  ((avec,psi,[CTrue])::cs) sigma = unify cs sigma
 
-    | unify namesAvoid ((avec,psi,[ChEq (Name a, Name b)])::cs) sigma =
-    if a = b then unify namesAvoid cs sigma
-    else if L.fresh a avec andalso L.fresh b avec
-    then let val sub = (b, Name a) in
-      unify namesAvoid (substCstr sub cs) (composeSubst sigma sub) end
-    else Either.LEFT TrueC
+    | unify  ((avec,psi,[CBottom])::cs) sigma = Either.LEFT "_|_ encountered"
 
+    | unify  ((avec,psi,[ChEq (Name a, Name b)])::cs) sigma =
+        if a = b 
+            then unify cs sigma
+            else if L.fresh a avec andalso L.fresh b avec
+                 then let val sub = (b, Name a) in
+                    unify (substCstr sub cs) (composeSubst sigma sub) end
+                 else Either.LEFT "Failed unification at equating names"
 
-    | unify namesAvoid ((avec,psi,[c as Equal (Zero, Zero)])::cs) sigma =
-        unify namesAvoid cs sigma
-    | unify namesAvoid ((avec,psi,[c as Equal (Zero, One)])::cs) sigma =
-        Either.LEFT TrueC
-    | unify namesAvoid ((avec,psi,[c as Equal (One, Zero)])::cs) sigma =
-        Either.LEFT TrueC
-    | unify namesAvoid ((avec,psi,[c as Equal (One, One)])::cs) sigma =
-        unify namesAvoid cs sigma
+    | unify  ((avec,psi,[c as Equal (Name a, y)])::cs) sigma =
+        let val sub = (a, y) in
+          unify (substCstr sub cs) (composeSubst sigma sub) end
 
-    | unify namesAvoid ((avec,psi,[c as Equal (Name a, Name b)])::cs) sigma =
-    if a = b 
-        then unify namesAvoid cs sigma
-        else if L.fresh a avec andalso L.fresh b avec
-            then let val sub = (b, Name a) in
-              unify namesAvoid (substCstr sub cs) (composeSubst sigma sub) end
-            else Either.LEFT TrueC
+    | unify  ((avec,psi,[c as Equal (y, Name a)])::cs) sigma =
+        let val sub = (a, y) in
+          unify (substCstr sub cs) (composeSubst sigma sub) end
 
-    | unify namesAvoid ((avec,psi,[c as Equal (Error,Error)])::cs) sigma =
-        unify namesAvoid cs sigma
-    | unify namesAvoid ((avec,psi,[c as Equal (Error, x)])::cs) sigma =
-        Either.LEFT TrueC
-    | unify namesAvoid ((avec,psi,[c as Equal (x, Error)])::cs) sigma =
-        Either.LEFT TrueC
-
-    (* VAR ELIM *)
-    | unify namesAvoid ((avec,psi,[c as Equal (Name x, t)])::cs) sigma =
-        if L.fresh x avec andalso all ((flip L.fresh) avec) (supportT t)
-        then let val sub = (x,t) in
-          unify namesAvoid (substCstr sub cs) (composeSubst sigma sub) end
-        else Either.LEFT c
-
-    | unify namesAvoid ((avec,psi,[c as IsError (x)])::cs) sigma =
-        (case x of
-             Error => unify namesAvoid cs sigma
-           | Name y => unify namesAvoid ((avec,psi,[Equal(x,Error)])::cs) sigma
-           | _ => Either.LEFT c)
-
-    (* SWAP *)
-    | unify namesAvoid ((avec,psi,[Equal (t1,Name x)])::cs) sigma =
-        unify namesAvoid ((avec,psi,[Equal (Name x, t1)])::cs) sigma
-
-
-    | unify namesAvoid ((avec,psi,[c as Equal (Data (x,y), Data (x',y'))])::cs) sigma =
-        unify namesAvoid ((avec,psi,[Equal (x,x')])::(avec,psi,[Equal(y,y')])::cs) sigma
-
-
-    | unify namesAvoid ((avec,psi,[c as Equal (Neg x, Neg y)])::cs) sigma =
-        unify namesAvoid ((avec,psi,[Equal(x,y)])::cs) sigma
-
-
-    | unify namesAvoid ((avec,psi,[c as Equal (Neg x, Bit y)])::cs) sigma =
-        unify namesAvoid ((avec,psi,[Equal (Bit y, Neg x)])::cs) sigma
-
-
-    | unify namesAvoid ((avec,psi,[c as Equal (Bit y, Neg x)])::cs) sigma =
-        if termFresh y avec andalso termFresh x avec then 
-          let
-            val unifName = ("unif",0)
-            val n1 = newBasedOn unifName (avec@namesAvoid)
-            val n2 = newBasedOn unifName (avec@(n1::namesAvoid))
-            val eq1 = Equal (y, Data (Name n1, Name n2))
-            val eq2 = Equal (Name n2, Neg x)
-          in
-            unify (n1::n2::namesAvoid) ((avec,psi,[eq1])::(avec,psi,[eq2])::cs) sigma
-          end
-        else Either.LEFT c
-
-
-    | unify _ _ _ = Either.LEFT TrueC
+    | unify c _ = Err.error "Undefined case in the unify algorithm"
 
 
   fun unif cs =
   let
-    val r = unify (supportCS cs) (flattenConstraints cs) []
+    fun red (avec,psi,[c]) = (avec,psi,[reduceC c])
+      | red _ = Err.error "Undefined case for unif.red"
+    fun reds cs = map red cs
+    val r = unify (reds (flattenConstraints cs)) []
   in
     r
   end
 
-
-  fun solve cs =
-    case unif cs of
-         Either.RIGHT (sigma,psi) => Either.RIGHT [(sigma, psi)]
-       | Either.LEFT phi    => Either.LEFT  [[phi]]
+  fun solve cs = unif cs
 
 
   structure BisimConstraint = SymBisimConstraint(PsiPiInstance)
-  structure BC = BisimConstraint
-  local open BisimConstraint in
 
-
-  val forallEliminationRules =
-    (fn (Forall (x, Imp(c,c'))) =>
-        (let
-          fun findE (Atomic (avec, psi, ChEq (a,b))) =
-                if not (Lst.member x avec) then
-                    (if Name x = a then [(x,b)] else
-                     if Name x = b then [(x,a)] else [])
-                else []
-            | findE (TermEq (a,b)) = []
-            | findE (Conj (c,c')) = findE c @ findE c'
-            | findE (Disj (c,c')) = findE c @ findE c'
-            | findE (Imp  (c,c')) = findE c @ findE c'
-            | findE _ = []
-        in
-          SOME (subst (Imp (c,c')) (findE c))
-        end)
-       | _ => NONE) ::
-    []
-
-  val trivialConditionRules =
-    (fn (StImp _) => SOME True | _ => NONE) ::
-    (fn (Atomic (_, _, TrueC)) => SOME True | _ => NONE) ::
-    (fn (Atomic (_, _, ChEq (a, b))) =>
-        if a = b then SOME True else NONE | _ => NONE) ::
-    (fn (Atomic (avec, _, ChEq (Name a, Name b))) =>
-        if a <> b andalso
-          (Lst.member a avec orelse Lst.member b avec)
-            then SOME False else NONE
-      | _ => NONE) ::
-    (fn (TermEq (a, b)) =>
-        if a = b then SOME True else NONE | _ => NONE) ::
-    (fn (TermEq (m,n)) => SOME (Atomic ([], unit, Equal (m,n))) | _ => NONE) ::
-
-    []
-
-
-  structure ABPTheory = struct
-    type literal = BC.constraint
-    type model = unit
-
-    fun neg l = Err.undefined "neg"
-    fun eqL l l' = Err.undefined "eqL"
-    val empty = ()
-    fun extend m l = Err.undefined "extend"
-    fun isConsistent m str = true
-    fun models m l = true
-  end
-
-  structure ABPSolver = PwbSmtTheoryWithForget(ABPTheory)
-
-
-  fun solveB c =
-  let
-    val cnf = 
-      c |> rewrite (trivialConditionRules @ forallEliminationRules @
-                   BC.simplificationRules)
-        |> BC.cnfList
-
-    val _ = PolyML.print cnf
-  in
-    Err.undefined "solveB"
-  end
+  fun solveB c = LEFT "Bisimulation solver unimplemented"
 
   val solveBisim = SOME solveB
 
-  end
 end;
 
 
@@ -433,7 +307,7 @@ structure SymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = PsiPiInstance.Inst
   structure Constraint = PiSymbolicInstanceRequirements.Constraint
-  type solution = (Inst.condition list list , ((Inst.name * Inst.term) list * Inst.assertion) list) Either.either
+  type solution = (string , (Inst.name * Inst.term) list * Inst.assertion) Either.either
   val solve            = PiSymbolicInstanceRequirements.solve
 end;
 
@@ -443,10 +317,9 @@ struct
   structure Constraint = PiSymbolicInstanceRequirements.BisimConstraint
   val solve =
     case PiSymbolicInstanceRequirements.solveBisim of
-         NONE => (fn c => Either.LEFT [])
+         NONE => (fn c => Either.LEFT "")
        | SOME s => s
 end;
-
 
 
 structure PiParserPrinterRequirements =
@@ -457,18 +330,16 @@ struct
   fun printN (s,i) = s ^ (if i = 0 then "" else Int.toString i)
 
   fun printT (Name a) = printN a
-    | printT (Data (t1,t2)) = "data(" ^ printT t1 ^","^ printT t2 ^ ")"
     | printT (Neg t) = "~" ^ printT t
-    | printT (Bit b) = "bit("^ printT b ^")"
-    | printT (Datum b) = "datum("^ printT b ^")"
     | printT (Error) = "ERR"
     | printT (Zero) = "0"
     | printT (One) = "1"
+    | printT (Bottom) = "_|_"
 
   fun printC (ChEq (t1,t2)) = printT t1 ^ " <-> " ^ printT t2
     | printC (Equal (t1,t2)) = printT t1 ^ " = " ^ printT t2
-    | printC (IsError t) = "isErr("^printT t ^")"
-    | printC (TrueC) = "T"
+    | printC (CTrue) = "True"
+    | printC (CBottom) = "False"
 
   fun printA psi = "1"
 
@@ -498,15 +369,7 @@ struct
     </choice/>
             (Lex.stok "ERR" >> return PiInstanceRequirements.Error)
     </choice/> 
-            (Lex.stok "bit" >> Lex.stok "(" >> delayed term' >>=
-            (fn t => Lex.stok ")" >> return (Bit t) ) )
-    </choice/> 
-            (Lex.stok "datum" >> Lex.stok "(" >> delayed term' >>=
-            (fn t => Lex.stok ")" >> return (Datum t) ) )
-    </choice/> 
-            (Lex.stok "data" >> Lex.stok "(" >> delayed term' >>=
-            (fn t1 => Lex.stok "," >> delayed term' >>=
-            (fn t2 => Lex.stok ")" >> return (Data (t1,t2) ) )))
+            (Lex.stok "_|_" >> return Bottom)
     </choice/>
             (Lex.stok "~" >> delayed term' >>=
             (fn t => return (Neg t) ) ) 
@@ -517,14 +380,13 @@ struct
 
 
   fun cond () =
-            (Lex.stok "isErr" >> Lex.stok "(" >> delayed term >>=
-            (fn t => Lex.stok ")" >> return (IsError t)))
-    </choice/>
             (delayed term >>=
             (fn t1 => Lex.stok "=" >> delayed term >>=
             (fn t2 => return (Equal (t1,t2)))))
     </choice/>
-            (Lex.stok "T" >> return TrueC)
+            (Lex.stok "True" >> return CTrue)
+    </choice/>
+            (Lex.stok "False" >> return CBottom)
 
   fun assr () = Lex.stok "1" >> return UnitAssr
 
@@ -533,8 +395,7 @@ struct
 
   fun parseResult p s =
     case Parser.parse (allP (delayed p)) (StringStream.make s) of
-         Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined "Pi.parseResult RIGHT x::y::zs"
+         Either.RIGHT (r,s) => Either.RIGHT r
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   fun parseName s = parseResult name s
@@ -572,3 +433,4 @@ structure Pi = PiCommand;
 structure PsiInstance = Pi;
 
 val start = Pi.start;
+

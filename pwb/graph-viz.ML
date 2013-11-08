@@ -80,7 +80,7 @@ struct
         "act: " ^ escape (showA act) ^ "\\n" ^
         "cstr: " ^ escape (showC constr) ^ "\\n" ^
         "sol: " ^
-            (sol |> either (const "NO") (fn s => escape (showS (hd s)) )) ))
+            (sol |> either (const "NO") (fn s => escape (showS s) )) ))
               ^ "]\n"
 
   val trueC = []

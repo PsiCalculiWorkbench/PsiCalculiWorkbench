@@ -28,12 +28,11 @@ sig
   type 'result parser
 
   val parse : 'result parser -> Stream.stream ->
-              ((string fail * Stream.stream) list,
-               ('result * Stream.stream) list) Either.either
+              (string fail * Stream.stream, 'result * Stream.stream) Either.either
 
   val direct  : (Stream.stream ->
-                ((string fail * Stream.stream) list,
-                 ('result * Stream.stream) list) Either.either) ->
+                (string fail * Stream.stream,
+                 'result * Stream.stream) Either.either) ->
                  'result parser
 
   val return  : 'a -> 'a parser
@@ -43,7 +42,6 @@ sig
   val delayed : (unit -> 'a parser) -> 'a parser
   val error   : string -> 'result parser
   val zero    : 'result parser
-  val plus    : 'a parser * 'a parser -> 'a parser
   val choice  : 'a parser * 'a parser -> 'a parser
   val eof     : 'a -> 'a parser
 
@@ -88,7 +86,7 @@ struct
   datatype 'a fail = Fail of 'a | Error of 'a
 
   datatype 'a parser = Parser of
-     stream -> ((string fail * stream) list, ('a * stream) list) either
+     stream -> (string fail * stream, 'a * stream) either
 
 
   fun parse (Parser p) = p
@@ -97,81 +95,41 @@ struct
 
   fun delayed f = Parser (fn s => (parse $ f ()) s)
 
-  fun error  e = Parser (fn s => LEFT  [(Fail e, s)])
-  val zero     = Parser (fn s => LEFT  [(Fail "zero", s)])
-  fun return a = Parser (fn s => RIGHT [(a, s)])
+  fun error  e = Parser (fn s => LEFT  (Fail e, s))
+  val zero     = Parser (fn s => LEFT  (Fail "zero", s))
+  fun return a = Parser (fn s => RIGHT (a, s))
 
-  val sPos = Parser (fn s => RIGHT [(Stream.pos s, s)])
+  val sPos = Parser (fn s => RIGHT (Stream.pos s, s))
 
-  (* TODO: revisit nofail, and choice *)
   fun nofail p = Parser (fn s =>
     case parse p s of
-         LEFT ((Fail e, s)::_) => LEFT [(Error e, s)]
-       | LEFT ((Error e, s)::_) => LEFT [(Error e, s)]
-       | LEFT _ => Err.undefined "Parser.nofail LEFT []"
+         LEFT (Fail e, s) => LEFT (Error e, s)
+       | LEFT (Error e, s) => LEFT (Error e, s)
        | RIGHT r => RIGHT r)
 
   fun p >>= f  = Parser (fn s =>
-    let
-      (* first apply 'p' parser *)
-      val pres = (parse p) s
-      (* then for all its outcomes apply 'f' parser *)
-      fun applyF res =
-      let
-        val r = map (fn (a, s') => (parse (f a)) s') res
-      in
-        case rights r of
-             [] => LEFT $ List.concat $ lefts r
-           | r  => RIGHT $ List.concat r
-      end
-    in
-      either LEFT applyF pres
-    end)
+    parse p s <//bindE//> (fn (r,s') => parse (f r) s') )
 
-  (* ignores the result *)
   fun p >> f = p >>= (fn _ => f)
 
-  (* non deterministic choice operator *)
-  fun plus (p,q) = Parser (
-    fn s =>
-    let
-      val res = [(parse p) s, (parse q) s]
-      val vld = rights res
-      val err = lefts res
-    in
-      case vld of
-           [] => LEFT $ List.concat err
-         | _  => RIGHT $ List.concat vld
-    end)
+  (* Ordered choice. Tries the first parser, if it succeds returns its result,
+  * otherwise tries the second parser and if it succeeds returns its result,
+  * and if it fails reutrns the first parser's failure *)
+  fun choice (p,q) = Parser (fn s =>
+    parse p s |> either (fn fl => parse q s |> either (fn _ => LEFT fl)
+                                                      returnE)
+                        returnE)
 
-  fun choice (p,q) = Parser (
-    fn s =>
-    let
-      val pres = (parse p) s
-      fun qres () = (parse q) s
-      fun findError l = List.find (fn (Error _,_) => true
-                                    | _ => false) l
-    in
-      case pres of
-           RIGHT (r::_) => RIGHT [r]
-         | RIGHT [] => Err.undefined "Parser.choice RIGHT []"
-         | LEFT fs => case findError fs of
-                           NONE => qres ()
-                         | SOME err => LEFT [err]
-    end)
-
-  val item = Parser (
-    fn s => case head s of
-                 NONE => LEFT [(Fail "end of input unexpected", s)]
-               | SOME (a,s') => RIGHT [(a,s')] )
-
-  fun eof result = Parser (
-    fn s => case head s of
-                 NONE => RIGHT [(result, s)]
-               | SOME _ => LEFT [(Fail "end of input expected", s)] )
+  val item = Parser (fn s =>
+    case head s of
+         NONE => LEFT (Fail "end of input unexpected", s)
+       | SOME (a,s') => RIGHT (a,s') )
 
 
-
+  fun eof result = Parser (fn s =>
+    case head s of
+         NONE => RIGHT (result, s)
+       | SOME _ => LEFT (Fail "end of input expected", s) )
 
 
   fun sat p =
@@ -194,29 +152,23 @@ struct
     (str' (String.explode s) >>
     return s) </choice/> error ("string " ^ s ^ " expected")
 
-
   fun until' p s a =
     case parse p s of
-         RIGHT _ => RIGHT [(a,s)]
-       | LEFT _ =>
-           either
-            LEFT
-            (fn ((i,s)::_) => until' p s (i::a)
-              | _ => Err.undefined "Parser.until' []")
-           (parse item s)
+         RIGHT _ => RIGHT (a,s)
+       | LEFT _ => parse item s |>
+                    either LEFT (fn (i,s) => until' p s (i::a))
 
   fun until p = Parser (fn s => until' p s [])
 
   fun notP p d = Parser (fn s =>
     case parse p s of
-         RIGHT _ => LEFT [(Fail "notP", s)]
-       | LEFT  _ => RIGHT [(d,s)]
+         RIGHT _ => LEFT (Fail "notP", s)
+       | LEFT  _ => RIGHT (d,s)
     )
 
   fun try p = Parser (fn s =>
     case parse p s of
-         RIGHT ((a,_)::_) => RIGHT [(a,s)]
-       | RIGHT _ => Err.undefined "Parser.try RIGHT []"
+         RIGHT (a,_) => RIGHT (a,s)
        | LEFT err => LEFT err
        )
 
@@ -269,7 +221,6 @@ struct
   fun prod a b =
     List.concat (map (fn el => map (fn el' => (el,el')) b) a)
 
-  (* The first parser is tried first *)
   fun both p1 p2 = Parser (fn s =>
     (* TODO: the implementation could be a bit more efficient *)
     let
@@ -277,20 +228,13 @@ struct
       val r2 = parse p2 s
     in
       case (r1, r2) of
-           (RIGHT r1', RIGHT r2') =>
-            let
-              val prodP =
-                (prod r1' r2') |>
-                filter (fn ((_,s), (_,s')) => Stream.pos s = Stream.pos s') |>
-                map (fn ((r,s),(r',_)) => ((r,r'),s))
-            in
-              if null prodP
-                then LEFT [(Fail "Product parsers did not agree", s)]
-                else RIGHT prodP
-            end
+           (RIGHT (r1',s1) , RIGHT (r2',s2)) =>
+            if Stream.pos s1 = Stream.pos s2
+                then RIGHT ((r1',r2'),s1)
+                else LEFT (Fail "Product parsers did not agree", s)
          | (LEFT e, RIGHT _) => LEFT e
          | (RIGHT _, LEFT e) => LEFT e
-         | (LEFT e, LEFT _) =>  LEFT e (* TODO: not sure about this *)
+         | (LEFT e, LEFT _) =>  LEFT e
     end)
 
 end;

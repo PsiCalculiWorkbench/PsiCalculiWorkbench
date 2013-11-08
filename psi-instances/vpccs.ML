@@ -351,8 +351,8 @@ struct
     val sol = solver (lineariseConstraint cs) [] []
   in
     case sol of
-         LEFT msg => LEFT []
-       | RIGHT sl => RIGHT [(sl, ())]
+         LEFT msg => LEFT msg
+       | RIGHT sl => RIGHT (sl, ())
   end
 
 
@@ -376,7 +376,7 @@ structure VPCCSSymbolicConstraintSolver : SYMBOLIC_CONSTRAINT_SOLVER =
 struct
   structure Inst       = VPCCSPsiInstance.Inst
   structure Constraint = VPCCSSymbolicInstanceRequisites.Constraint
-  type solution = (Inst.condition list list , ((Inst.name * Inst.term) list * Inst.assertion) list) Either.either
+  type solution = (string , (Inst.name * Inst.term) list * Inst.assertion) Either.either
   val solve            = VPCCSSymbolicInstanceRequisites.solve
 end;
 structure VPCCSSymbolicBisimConstraintSolver : SYMBOLIC_BISIM_CONSTRAINT_SOLVER =
@@ -499,8 +499,7 @@ struct
 
   fun parseResult p s =
     case Parser.parse (p ()) (StringStream.make s) of
-         Either.RIGHT [(r,s)] => Either.RIGHT r
-       | Either.RIGHT _ => Err.undefined ""
+         Either.RIGHT (r,s) => Either.RIGHT r
        | Either.LEFT  _ => Either.LEFT "Error parsing"
 
   fun parseName s = parseResult name s

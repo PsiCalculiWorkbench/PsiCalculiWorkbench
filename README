@@ -1,34 +1,67 @@
 Psi-calculi Workbench (Pwb)
 ---------------------------
 
-Pwb is a generic framework for implementing psi-calculi and a set of tools for
-analysing processes in the resulting calculi. Take a look at the 'examples/'
-directory and the README file therein, for example implementations.
-
-For more information, go to [2].
-
-Prerequisites
--------------
-
-To run Psi-calculi Workbench, you need a working copy of Poly/ML [1] (version
-5.4 and up). Other SML implementations may work, but only Poly/ML has been
-tested.
-
-Pwb expects that the environment variable PSI_WORKBENCH_HOME is set to the Pwb
-directory.
-
-You might want to put 'tools/pwb' on the PATH. It is the frontend to other Pwb
-tools. To see what can be done with 'tools/pwb', take a look at the output of
-'tools/pwb help'.
+Pwb is a generic tool and framework for implementing process calculi. It
+is based on the concurrency framework psi-calculi. Pwb allows for
+writing calculi which are parametric on data, and logics. Pwb provides
+(weak and strong) symbolic bisimulation checking and execution.
 
 
-Directory content
------------------
+Installing
+----------
 
-    pwb/           - workbench source
-    tools/         - auxiliary tools
-    psi-instances/ - psi-calculi example implementations
+Pwb depends on the Poly/ML compiler of Standard ML. You can fetch it from
+www.polyml.org.
+
+Linux and Mac OS X
+------------------
+
+Typically Poly/ML can be install using a systems package manager:
+on Debian: apt-get install polyml, on Mac OS X it is available on both MacPorts
+and brew: 'port install polyml' and 'brew install polyml'.
+
+Unpack the tarball and set the environment variable PSI_WORKBENCH_HOME to the
+unpacked directory:
+
+cd PsiWorkBench-yyyy.dd
+export PSI_WORKBENCH_HOME=`pwd`
+export PATH="$PATH:`pwd`/tools"
 
 
-[1]: http://www.polyml.org/
-[2]: http://www.it.uu.se/research/group/mobility/applied/psiworkbench
+Windows
+-------
+
+On windows, you need Cygwin (http://cygwin.com/). Install Cygwin together
+with gcc packages. Compile and install Poly/ML from www.polyml.org.
+
+In cygwin shell, execute:
+
+cd PsiWorkBench-yyyy.dd
+export PSI_WORKBENCH_HOME=`pwd`
+export PATH="$PATH:`pwd`/tools"
+
+
+Running
+-------
+
+The main Pwb driver is located in tools/pwb. If you have set the environment
+variables as described in installing section, you should be able to execute:
+
+$ pwb
+
+To load example calculi, for example, pi-calculus found in psi-instances/:
+
+$ cd psi-instances/
+$ pwb load-instance pi.ML
+    ...
+pwb>
+
+This uses the compiler in the interpreter mode. At the pwb> prompt type 'help'
+and enter to see the available commands.
+
+For development of new instances and pwb itself, you should use pwb as wrapper
+for the compiler to properly load the dependencies, as:
+
+$ pwb sml @file.ML
+
+
