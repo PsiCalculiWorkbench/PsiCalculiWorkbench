@@ -1,0 +1,28 @@
+
+Sink(nodeId, sinkChan) <=
+    '"init(nodeId)"!<sinkChan> .
+    ! "data(sinkChan)"(x). ProcData<x> ;
+
+Node(nodeId, nodeChan, datum) <=
+    "init(nodeId)"?(chan) .
+    '"init(nodeId)"!<nodeChan> .
+    '"data(chan)"<datum> .
+    ! "data(nodeChan)"(x). '"data(chan)"<x>  ;
+
+NodeForwardData(nodeChan, chan) <=
+    ! "data(nodeChan)"(x). '"data(chan)"<x>  ;
+
+
+TS(x, req) <= 'req<x>.TS<x> ; -- should be x + 1
+Link(x,y,req) <= req(ts).(| "<x,y,linked,req,ts>" |) ;
+Unlink(x,y,req) <= req(ts) . (| "<x,y,unlinked,req,ts>" |) ;
+
+System3(datum1,datum2) <= (new r) (
+    TS<1,"data(r)"> |
+    Link<0,1,"data(r)"> | Link<1,2,"data(r)"> | Unlink<0,1,"data(r)"> |
+    (new sinkChan)  Sink<0, sinkChan>      |
+    (new chan1)     Node<1, chan1, datum1> |
+    (new chan2)     Node<2, chan2, datum2>
+)
+;
+

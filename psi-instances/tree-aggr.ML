@@ -22,44 +22,33 @@ struct
   datatype condition = OutputConn of term * term
                      | InputConn of term * term
                      | ChEq of term * term
-                     | CollectC of term
+                     | CollectC of term * term
                      | TrueC
 
   (* Assertion is the one element set 'topology' below *)
-  datatype phase = Build
-                 | CollectP of term
+  datatype phase = BuildA
+                 | CollectA of term
   type assertion = phase list
 
-  (*
-  val topology = [
-    (0,1),
-    (0,2),
-    (2,3)
-  ]
-  *)
+  fun numberOfCollects psi x =
+    psi |> filter (fn (CollectA (Name a)) => a = x
+                    | _ => false)
+        |> length
 
-  val topology = [
-    (0,1),
-    (1,2),
-    (2,3)
-  ]
+  fun listOfSize 0 el = []
+    | listOfSize n el = el::(listOfSize (n-1) el)
+
 
   val maxLevel = 5
 
-  (*
   val topology = [
     (0,1),
-    (0,2),
     (1,2),
-    (1,3),
-    (2,3),
-    (2,4),
-    (3,4)
+    (2,3)
   ]
-  *)
-
-
   val top = map (fn (x,y) => (Int x, Int y)) topology
+
+
 
   type atom = name
 
@@ -75,9 +64,7 @@ struct
     | entails (_, ChEq (Name a, Name b)) = a = b
     | entails (_, ChEq (_,_)) = false
     | entails (_, TrueC) = true
-    | entails (psi, CollectC (Int x)) =
-        psi |> flatmap (fn (CollectP (Int p)) => [p] | _ => [])
-            |> member x
+    | entails (psi, CollectC (Name n, Int x)) = (numberOfCollects psi n) = x
     | entails _ = false
 
   fun brReceive (m,n) = InputConn (m,n)
@@ -101,7 +88,7 @@ struct
   fun supportC (ChEq (t1,t2)) = supportT t1 @ supportT t2
     | supportC (OutputConn (t1,t2)) =  supportT t1 @ supportT t2
     | supportC (InputConn (t1,t2)) =  supportT t1 @ supportT t2
-    | supportC (CollectC t) = supportT t
+    | supportC (CollectC (t1,t2)) = supportT t1 @ supportT t2
     | supportC (TrueC) = []
 
   fun supportA psi = []
@@ -120,7 +107,7 @@ struct
   fun swapC pi (ChEq (t1,t2)) = ChEq (swapT pi t1, swapT pi t2)
     | swapC pi (OutputConn (t1,t2)) = OutputConn (swapT pi t1, swapT pi t2)
     | swapC pi (InputConn (t1,t2)) = InputConn (swapT pi t1, swapT pi t2)
-    | swapC pi (CollectC t1) = CollectC (swapT pi t1)
+    | swapC pi (CollectC (t1,t2)) = CollectC (swapT pi t1, swapT pi t2)
     | swapC pi TrueC = TrueC
 
   fun swapA pi psi  = psi
@@ -145,14 +132,13 @@ struct
   val reduceT = fixReduceT
 
 
-  fun reduceC (CollectC t) = CollectC (reduceT t)
+  fun reduceC (CollectC (t1,t2)) = CollectC (reduceT t1, reduceT t2)
     | reduceC c = c
 
-  fun reduceA psi = psi |> map (fn (CollectP t) => CollectP (reduceT t)
+  fun reduceA psi = psi |> map (fn (CollectA t) => CollectA (reduceT t)
                                  | x => x)
 
 
-  (* TODO: need some termrwriting *)
   fun substT' sigma (Name n) =
     (case List.find (fn (x,_) => x = n) sigma of
            NONE       => Name n
@@ -170,10 +156,10 @@ struct
   fun substC sigma (ChEq (a,b)) = ChEq (substT sigma a, substT sigma b)
     | substC sigma (InputConn (a,b)) = InputConn (substT sigma a, substT sigma b)
     | substC sigma (OutputConn (a,b)) = OutputConn (substT sigma a, substT sigma b)
-    | substC sigma (CollectC a) = CollectC (substT sigma a)
+    | substC sigma (CollectC (a,b)) = CollectC (substT sigma a, substT sigma b)
     | substC sigma (TrueC) = TrueC
 
-  fun substA sigma psi = psi |> map (fn (CollectP t) => CollectP (substT sigma t)
+  fun substA sigma psi = psi |> map (fn (CollectA t) => CollectA (substT sigma t)
                                       | x => x)
 
   (* the pi-calculus is unsorted *)
@@ -278,19 +264,24 @@ struct
     | preUnify ((avec, psi, [CollectC cl])::cs) psiS sigma omega kapa =
         if psi </entails/> (CollectC cl)
             then preUnify cs psiS sigma omega kapa
-            else Either.LEFT "collect is not entailed"
+            else (case cl of
+                      (Name a, Int y) =>
+                        if a <//member//> avec then Either.LEFT "Restricted name"
+                        else 
+                          let val n = y - (numberOfCollects psi a)
+                          in preUnify cs ((listOfSize n (CollectA (Name a))) </compose/> psiS) sigma omega kapa
+                          end
+                     | _ => Either.LEFT "Malformed condition")
+              (* preUnify cs ([(CollectA cl)] </compose/> psiS) sigma omega kapa *)
+              (* Either.LEFT "collect is not entailed" *)
     | preUnify ((avec, psi, [OutputConn (Init (Int n), Name x)])::cs) psiS sigma omega kapa =
         preUnify  cs psiS sigma ((n, x)::omega) kapa
-        (*let val subst = (x, Init (Int n)) in*)
-            (*preUnify (substCstr subst cs) psiS (composeSubst sigma subst) kapa*)
-        (*end*)
     | preUnify ((avec, psi, [OutputConn (Init (Int _), Init (Int _))])::cs) psiS sigma omega kapa =
         undef "Undefined: init < init"
     | preUnify ((avec, psi, [OutputConn (Name _, Init (Int _))])::cs) psiS sigma omega kapa =
         undef "Undefined: x < init"
     | preUnify ((avec, psi, [OutputConn (Name _, Name _)])::cs) psiS sigma omega kapa =
         undef "Undefined: x < y"
-
     | preUnify ((avec, psi, [InputConn (Name x, Init (Int m))])::cs) psiS sigma omega kapa =
         preUnify cs psiS sigma omega ((x, m)::kapa)
     | preUnify ((avec, psi, [InputConn (Init (Int _), Init (Int _))])::cs) psiS sigma omega kapa =
@@ -385,7 +376,7 @@ struct
   structure Constraint = PiSymbolicInstanceRequirements.BisimConstraint
   val solve =
     case PiSymbolicInstanceRequirements.solveBisim of
-         NONE => (fn c => Either.LEFT [])
+         NONE => (fn c => Either.LEFT "")
        | SOME s => s
 end;
 
@@ -411,11 +402,11 @@ struct
     | printC (InputConn (t1,t2)) = printT t1 ^ ">" ^ printT t2
     | printC (ChEq (t1,t2)) = printT t1 ^ "==" ^ printT t2
     | printC (TrueC) = "T"
-    | printC (CollectC t1) = "collect("^ printT t1 ^")"
+    | printC (CollectC (t1,t2)) = "collect("^ printT t1 ^ ", " ^ printT t2 ^")"
 
   fun printA psi = 
-    psi |> map (fn Build => "build"
-                 | CollectP i => "collect("^printT i^")")
+    psi |> map (fn BuildA => "build"
+                 | CollectA i => "collect("^printT i^")")
         |> intersperse ","
         |> String.concat
 
@@ -455,10 +446,15 @@ struct
 
 
   fun cond () =
-            (Lex.stok "collect" >> Lex.stok "(" >> term () >>=
-            (fn t => Lex.stok ")" >> return (CollectC t)))
+            (           Lex.stok "collect" >> 
+                        Lex.stok "(" >> 
+                        term () >>=
+            (fn t1 =>   Lex.stok "," >>
+                        term () >>=
+            (fn t2 =>   Lex.stok ")" >> return (CollectC (t1, t2)))))
     </choice/>
             (Lex.stok "T" >> return TrueC)
+
 (*
     </choice/>
             (term () >>=
@@ -475,9 +471,9 @@ struct
             *)
 
   fun assr () =
-    ((Lex.stok "build" >> return Build) </choice/>
+    ((Lex.stok "build" >> return BuildA) </choice/>
      (Lex.stok "collect" >> Lex.stok "(" >> delayed term >>=
-        (fn p => Lex.stok ")" >> return (CollectP p))))
+        (fn p => Lex.stok ")" >> return (CollectA p))))
     </sepby/> (Lex.stok ",")
 
 

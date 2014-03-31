@@ -475,13 +475,10 @@ struct
     val c    = cnf c
     val cnf  = cnfToList c
     val sol  = dpllSAT [] cnf
-    val sols = case sol of SOME sigma => [sigma]
-                  | NONE => []
-    val sols = map (fn sigma => (sigma, unit)) sols
   in
-    case sols of
-         [] => Either.LEFT []
-       | _  => Either.RIGHT sols
+    case sol of
+         NONE => Either.LEFT "Unsat"
+       | SOME sigma => Either.RIGHT (sigma,unit)
   end
 
   val solveBisim = SOME solveBisim'
@@ -514,7 +511,7 @@ struct
   structure Constraint = PiSymbolicInstanceRequirements.BisimConstraint
   val solve =
     case PiSymbolicInstanceRequirements.solveBisim of
-         NONE => (fn _ => Either.LEFT [])
+         NONE => (fn _ => Either.LEFT "")
        | SOME s => s
 end;
 

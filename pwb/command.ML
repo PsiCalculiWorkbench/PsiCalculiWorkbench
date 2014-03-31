@@ -222,7 +222,7 @@ struct
   fun ppClauseFormals _ cl     = PPClause.ppClauseFormals cl
   fun ppAlpha _ act            = PPSAct.ppAction act
 
-  fun ppAgent ctx a = PsiPP.ppAgent a
+    fun ppAgent ctx a = PsiPP.ppAgent a
 
   fun ppAgentC ctx a =
     text "  " </join/> (nest 2 (ppAgent ctx a)) </join/> line
@@ -661,20 +661,24 @@ struct
   fun stepAgentC
         reduce
         ppAlpha
-        (wctx as (ctx,(agent::agents))) =
+        (wctx as (ctx,((initPsi,agent)::agents))) =
   let
-    fun stransAgent (psi,agent',alpha,c,sol,agent) = agent
+    fun addAssertion psi agent = (Psi.Parallel(Psi.Assertion psi,agent))
+    fun stripAssertion (Psi.Parallel (Psi.Assertion _, agent)) = agent
+      | stripAssertion agent = agent
 
-    val tr = reduce (getEnv ctx) agent Sim.Constraint.unit 
+    val tr = reduce (getEnv ctx) (addAssertion initPsi agent) Sim.Constraint.unit
     val transitions = onlySolv tr
 
     val transitions = transitions |> map
         (fn (p, alpha, c, RIGHT (subst, psi), p') =>
-                (psi, agent, alpha, c, (subst,psi), Psi.subst p' subst)
+                (Psi.Inst.compose (initPsi, psi), stripAssertion agent, alpha, c, (subst,psi), Psi.subst (stripAssertion p') subst)
           | _ => Err.undefined "Command.stepAgentC.transitions LEFT")
 
     val n        = List.length transitions
     val nTrans   = zip (enum 1 n) transitions
+
+    fun stransAgent (psi,agent',alpha,c,sol,agent) = (psi,agent)
     fun select x = stransAgent $ List.nth (transitions, x - 1)
 
     val _ = output ctx ((Int.toString n) ^ " possible derivative(s)")
@@ -689,13 +693,13 @@ struct
   in
     (           numCommand ctx >>=
     (fn x =>    nofail (if x - 1 < n
-                    then return (ctx,((select x)::agent::agents))
+                    then return (ctx,((select x)::(initPsi,agent)::agents))
                     else error "No such agent") ) )
     </choice/>
                 (ws >> str "b" >> nofail (trS () >>
                 delayed (fn () =>
                 (case agents of
-                      [] => Parser.error "Already at the top"
+                      [] => Parser.error "There are no more agents to backtrack to"
                     | _ => return (ctx,agents)))))
     </choice/>
                 (  ((ws >> str "q" >> trS ()) </choice/> (ws >> eof ())) >>
@@ -720,7 +724,7 @@ struct
                     let
                       val () = output ctx "Type <num> for selecting derivative, b - for backtracking, q - quit"
                       val (_,s) = interactiveStatements
-                                        (ctx, [a])
+                                        (ctx, [(Psi.Inst.unit,a)])
                                         (name ^ ">")
                                         stepF
                                         (isEof o fst)

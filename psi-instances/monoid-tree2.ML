@@ -4,6 +4,9 @@
 
 structure PiInstanceRequirements =
 struct
+
+  open Missing
+
   type name      = string
   type nodeid    = int
 
@@ -16,46 +19,38 @@ struct
   datatype condition = OutputConn of term * term
                      | InputConn of term * term
                      | ChEq of term * term
+                     | Conn of term * term
+                     | Disconn of term * term
 
   (* Assertion is the one element set 'topology' below *)
-  datatype assertion = Top
+  datatype assertion = Top of (term * term) list
 
-  (*val topology = [*)
-    (*(0,1),*)
-    (*(0,2),*)
-    (*(2,3)*)
-  (*]*)
-  val topology = [
-    (0,1),
-    (0,2),
-    (1,2)
-  ]
-  (*
-  val topology = [
-    (0,1),
-    (0,2),
-    (1,2),
-    (1,3),
-    (2,3),
-    (2,4),
-    (3,4)
-  ]
-  *)
-
-
-  val top = map (fn (x,y) => (Int x, Int y)) topology
+  fun preTopology (Top top) = 
+    flatmap (fn (Int x, Int y) => [(x,y)] | _ => []) top
 
   type atom = name
 
-
   fun chaneq (m, n) = ChEq (m,n)
 
-  fun compose (psi1,psi2)      = Top
-  val unit                     = Top
+  fun compose (Top psi1, Top psi2) = Top $ psi1 @ psi2
+  val unit = Top []
+
+  fun conn psi m n =
+    let 
+      val top = preTopology psi
+      val res = top |> filter (fn x => x = (m,n) orelse x = (n,m))
+      val len = length res
+    in
+      len mod 2 = 1
+    end
 
   fun entails (psi, OutputConn (m, n)) = m = n
-    | entails (psi, InputConn (m, n)) =
-        Lst.member (m,n) top orelse Lst.member (n,m) top
+    | entails (psi, InputConn (Int m, Int n)) = conn psi m n
+    | entails (psi, Conn (Int m, Int n)) = conn psi m n
+    | entails (psi, Disconn (Int m, Int n)) = not (conn psi m n)
+    | entails (psi, Conn _) = false
+    | entails (psi, Disconn _) = false
+    | entails (psi, InputConn (_, _)) = false
     | entails (_  , ChEq (Name a, Name b)) = a = b
     | entails (_  , ChEq (_,_)) = false
 
@@ -76,6 +71,8 @@ struct
   fun supportC (ChEq (t1,t2)) = supportT t1 @ supportT t2
     | supportC (OutputConn (t1,t2)) =  supportT t1 @ supportT t2
     | supportC (InputConn (t1,t2)) =  supportT t1 @ supportT t2
+    | supportC (Conn (t1,t2)) =  supportT t1 @ supportT t2
+    | supportC (Disconn (t1,t2)) =  supportT t1 @ supportT t2
 
   fun supportA psi = []
 
@@ -89,6 +86,8 @@ struct
   fun swapC pi (ChEq (t1,t2)) = ChEq (swapT pi t1, swapT pi t2)
     | swapC pi (OutputConn (t1,t2)) = OutputConn (swapT pi t1, swapT pi t2)
     | swapC pi (InputConn (t1,t2)) = InputConn (swapT pi t1, swapT pi t2)
+    | swapC pi (Conn (t1,t2)) = Conn (swapT pi t1, swapT pi t2)
+    | swapC pi (Disconn (t1,t2)) = Disconn (swapT pi t1, swapT pi t2)
 
   fun swapA pi psi  = psi
 
@@ -107,8 +106,11 @@ struct
   fun substC sigma (ChEq (a,b)) = ChEq (substT sigma a, substT sigma b)
      | substC sigma (InputConn (a,b)) = InputConn (substT sigma a, substT sigma b)
      | substC sigma (OutputConn (a,b)) = OutputConn (substT sigma a, substT sigma b)
+     | substC sigma (Conn (a,b)) = Conn (substT sigma a, substT sigma b)
+     | substC sigma (Disconn (a,b)) = Disconn (substT sigma a, substT sigma b)
 
-  fun substA sigma psi = psi
+  fun substA sigma (Top psi) = 
+    Top $ map (fn (x,y) => (substT sigma x, substT sigma y))  psi
 
   (* the pi-calculus is unsorted *)
   structure Sort = Unsorted
@@ -206,76 +208,83 @@ struct
   fun undef msg = Err.error msg
   fun substCstr s cs = Constraint.subst [s] cs
 
-  fun preUnify [] psiS sigma omega kapa = Either.RIGHT (sigma,psiS,omega,kapa)
-    | preUnify ((avec, psi, [OutputConn (Init (Int n), Name x)])::cs) psiS sigma omega kapa =
-        preUnify  cs psiS sigma ((n, x)::omega) kapa
-    | preUnify ((avec, psi, [OutputConn (Init (Int _), Init (Int _))])::cs) psiS sigma omega kapa =
-        undef "Undefined: init < init"
-    | preUnify ((avec, psi, [OutputConn (Name _, Init (Int _))])::cs) psiS sigma omega kapa =
-        undef "Undefined: x < init"
-    | preUnify ((avec, psi, [OutputConn (Name _, Name _)])::cs) psiS sigma omega kapa =
-        undef "Undefined: x < y"
-    | preUnify ((avec, psi, [InputConn (Name x, Init (Int m))])::cs) psiS sigma omega kapa =
-        preUnify cs psiS sigma omega ((x, m)::kapa)
-    | preUnify ((avec, psi, [InputConn (Init (Int _), Init (Int _))])::cs) psiS sigma omega kapa =
-        undef "Undefined: init > init"
-    | preUnify ((avec, psi, [InputConn (Init (Int _), Name _)])::cs) psiS sigma omega kapa =
-        undef "Undefined: init > x"
-    | preUnify ((avec, psi, [InputConn (Name _ , Name _)])::cs) psiS sigma omega kapa =
-        undef "Undefined: x > y"
-
-    | preUnify ((avec, psi, [cond as ChEq (Data (Name x) , Data (Name y))])::cs) psiS sigma omega kapa =
-        (* all names are distinct (this gives a channel equivalence of identity
-         * on names (diagonal = reflexive relation) *)
-        if x = y then preUnify cs psiS sigma omega kapa
-        else Either.LEFT "Found names which are not the same"
-
-    | preUnify ((avec, psi, [c])::cs) psiS sigma omega kapa = Either.LEFT ""
-    | preUnify _ _ _ _ _ = Err.error "This shoud not happen"
-
-
-  val symtop = topology @ map Tpl.swap topology
 
   fun subset x y = x |> all (fn xm => Lst.member xm y)
 
-  fun solve' cs =
+  fun unifyOutputs ((avec, psi, [OutputConn (Init (Int n), Name x)])::cs) rcs sigma  =
+    let val subst = (x, Init $ Int $ n)
+    in unifyOutputs (substCstr subst cs) (substCstr subst rcs) (subst::sigma)
+    end
+    | unifyOutputs (_::cs) rcs sigma =
+    unifyOutputs cs rcs sigma
+    | unifyOutputs [] rcs sigma = (rcs, sigma)
+
+
+  fun unify [] psiS sigma   = RIGHT (sigma,psiS)
+    | unify ((avec, psi, [OutputConn (Init (Int n), Name x)])::cs) psiS sigma   =
+        undef "Not all outputs were pre unified"
+
+    | unify ((avec, psi, [Conn (Int x, Int y)])::cs) (Top psiS) sigma   =
+          if (psi </compose/> (Top psiS)) </entails/> Conn (Int x, Int y)
+            then unify cs (Top psiS) sigma
+            else unify cs (Top ((Int x, Int y)::psiS)) sigma
+
+    | unify ((avec, psi, [Disconn (Int x, Int y)])::cs) (Top psiS) sigma   =
+          if (psi </compose/> (Top psiS)) </entails/> Disconn (Int x, Int y)
+            then unify cs (Top psiS) sigma
+            else unify cs (Top ((Int x, Int y)::psiS)) sigma
+
+    | unify ((avec, psi, [Conn _])::cs) (Top psiS) sigma   =
+        error "variables and other terms apart from integers in conn() are not handled"
+
+    | unify ((avec, psi, [Disconn _])::cs) (Top psiS) sigma   =
+        error "variables and other terms apart from integers in disconn() are not handled"
+
+    | unify ((avec, psi, [InputConn (Name x, Init (Int m))])::cs) (Top psiS) sigma   =
+        let 
+          val id = Int 0
+          val node = Init id
+        in
+          if (psi </compose/> (Top psiS)) </entails/> InputConn (node, Init (Int m))
+            then unify (substCstr (x, node) cs) (Top psiS) ((x, node)::sigma)
+            else unify (substCstr (x, node) cs) (Top ((Int 0, Int m)::psiS)) ((x, node)::sigma)
+        end
+
+    | unify ((avec, psi, [InputConn (Init (Int x), Init (Int y))])::cs) (Top psiS) sigma   =
+          if (psi </compose/> (Top psiS)) </entails/> InputConn (Init (Int x), Init (Int y))
+            then unify cs (Top psiS) sigma
+            else unify cs (Top ((Int x, Int y)::psiS)) sigma
+        
+
+    | unify ((avec, psi, [OutputConn (Init (Int x), Init (Int y))])::cs) psiS sigma   =
+        if x = y then unify cs psiS sigma else LEFT "Can only broadcast on itself"
+
+    | unify ((avec, psi, [OutputConn (Name _, Init (Int _))])::cs) psiS sigma   =
+        undef "Undefined: x < init"
+    | unify ((avec, psi, [OutputConn (Name _, Name _)])::cs) psiS sigma   =
+        undef "Undefined: x < y"
+    | unify ((avec, psi, [InputConn (Init (Int _), Name _)])::cs) psiS sigma   =
+        undef "Undefined: init > x"
+    | unify ((avec, psi, [InputConn (Name _ , Name _)])::cs) psiS sigma   =
+        undef "Undefined: x > y"
+
+    | unify ((avec, psi, [cond as ChEq (Data (Name x) , Data (Name y))])::cs) psiS sigma   =
+        (* all names are distinct (this gives a channel equivalence of identity
+         * on names (diagonal = reflexive relation) *)
+        if x = y then unify cs psiS sigma  
+        else Either.LEFT "Found names which are not the same"
+
+    | unify ((avec, psi, [c])::cs) psiS sigma   = Either.LEFT ""
+    | unify _ _ _ = Err.error "This shoud not happen"
+
+  fun solve cs =
   let
-    val m = preUnify (flattenConstraints cs) Top [] [] []
-    (* omega - output conn (init(n) < x)
-     * kapa - input conn (x > init(n) ) *)
-    fun getO omega =
-      (case omega of
-            [(n,x)] => (n,x)
-          | _ => Err.undefined "More than one output conn in solve'")
+    val c = flattenConstraints cs
+    val (c',sigma) = unifyOutputs c c []
   in
-    m <//bindE//> (fn (sigma,psi,omega,kapa) =>
-        case (null omega, null kapa) of
-             (false, true) => let val (n,x) = getO omega in
-               RIGHT ((x,Init (Int n))::sigma,psi) end
-           | (true, false) =>
-               let
-                 val cand = kapa |>
-                    map (fn (_,i) => List.filter (fn (x,y) => y = i) topology) |>
-                    map (map fst)
-                 val x = kapa |> map fst |> hd
-               in
-                 if null cand then LEFT "Failed at finding an edge"
-                 else RIGHT ((x, Init (Int (hd $ hd cand)))::sigma, psi)
-               end
-           | (false,false) =>
-               let
-                 val (n,x) = getO omega
-                 val t = topology |> List.filter (fn (x,_) => n = x) |> map snd
-                 val k = map snd kapa
-               in
-                 if k <//subset//> t then RIGHT ((x, Init(Int n))::sigma,psi)
-                 else LEFT ""
-               end
-           | (true, true) => RIGHT (sigma, psi)
-    )
+    unify c' (Top []) sigma
   end
 
-  fun solve cs = solve' cs
 
   structure BisimConstraint = SymBisimConstraint(PsiPiInstance)
 
@@ -329,9 +338,16 @@ struct
 
   fun printC (OutputConn (t1,t2)) = printT t1 ^ "<" ^ printT t2
     | printC (InputConn (t1,t2)) = printT t1 ^ ">" ^ printT t2
+    | printC (Conn (t1,t2)) = "conn(" ^ printT t1 ^ "," ^ printT t2 ^ ")"
+    | printC (Disconn (t1,t2)) = "disconn(" ^ printT t1 ^ "," ^ printT t2 ^ ")"
     | printC (ChEq (t1,t2)) = printT t1 ^ "==" ^ printT t2
 
-  fun printA psi = "1"
+  fun printLink (a,b) = "(" ^ printT a ^ "," ^ printT b ^ ")"
+  fun printA (Top psi) =
+    psi |>
+    map printLink |>
+    intersperse "," |>
+    String.concat
 
   structure Parser = Parser(StringStream)
   open Parser
@@ -360,6 +376,14 @@ struct
 
 
   fun cond () =
+            (Lex.stok "conn" >> Lex.stok "(" >> term () >>=
+            (fn t1 => Lex.stok "," >> term () >>=
+            (fn t2 => Lex.stok ")" >> return (Conn (t1, t2))  ) ) )
+    </choice/>
+            (Lex.stok "disconn" >> Lex.stok "(" >> term () >>=
+            (fn t1 => Lex.stok "," >> term () >>=
+            (fn t2 => Lex.stok ")" >> return (Disconn (t1, t2))  ) ) )
+    </choice/>
             (term () >>=
             (fn t1 => Lex.stok "==" >> term () >>=
             (fn t2 => return (ChEq (t1, t2)) ) ) )
@@ -373,7 +397,13 @@ struct
             (fn t2 => return (OutputConn (t1, t2)) ) ) )
 
 
-  fun assr () = Lex.stok "1" >> return Top
+  fun link () =     Lex.stok "(" >>
+                    term () >>=
+    (fn t1 =>       Lex.stok "," >>
+                    term () >>=
+    (fn t2 =>       return (t1, t2)))
+
+  fun assr () = (link () </sepby/> Lex.stok ",") >>= return o Top
 
   fun parseResult p s =
     case Parser.parse (delayed p) (StringStream.make s) of

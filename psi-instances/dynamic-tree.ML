@@ -4,6 +4,8 @@
 
 structure PiInstanceRequirements =
 struct
+  open Missing
+
   type name      = string
   type nodeid    = int
 
@@ -18,44 +20,44 @@ struct
                      | ChEq of term * term
 
   (* Assertion is the one element set 'topology' below *)
-  datatype assertion = Top
+  datatype link_state = Linked | Unlinked
 
-  (*val topology = [*)
-    (*(0,1),*)
-    (*(0,2),*)
-    (*(2,3)*)
-  (*]*)
-  val topology = [
-    (0,1),
-    (0,2),
-    (1,2)
-  ]
-  (*
-  val topology = [
-    (0,1),
-    (0,2),
-    (1,2),
-    (1,3),
-    (2,3),
-    (2,4),
-    (3,4)
-  ]
-  *)
+  datatype link =
+    LinkA of term * term * link_state * term * term
+  datatype assertion = LinkSet of link list
 
 
-  val top = map (fn (x,y) => (Int x, Int y)) topology
+  fun topologyFromA (LinkSet links) =
+  let
+    fun restrict x y =
+      links |> flatmap (fn (LinkA (Int x', Int y',st,Name nm, Int ts)) =>
+                            (if x' = x andalso y = y'
+                                then [(st,nm,ts)]
+                                else [])
+                        | _ => [])
+  in
+    links |> 
+    flatmap (fn (LinkA (Int x, Int y, Linked, Name name, Int ts)) =>
+                if (restrict x y |> 
+                    all (fn (st,nm,ts') => ts > ts' orelse (ts = ts' andalso st = Linked)))
+                    then  [(x,y)]
+                    else []
+                | _ => [])
+  end
+
 
   type atom = name
 
-
   fun chaneq (m, n) = ChEq (m,n)
 
-  fun compose (psi1,psi2)      = Top
-  val unit                     = Top
+  fun compose (LinkSet psi1, LinkSet psi2) = LinkSet (psi1 @ psi2)
+  val unit = LinkSet []
 
   fun entails (psi, OutputConn (m, n)) = m = n
-    | entails (psi, InputConn (m, n)) =
-        Lst.member (m,n) top orelse Lst.member (n,m) top
+    | entails (psi, InputConn (Int m, Int n)) =
+        Lst.member (m,n) (topologyFromA psi) orelse 
+        Lst.member (n,m) (topologyFromA psi)
+    | entails (psi, InputConn _) = false
     | entails (_  , ChEq (Name a, Name b)) = a = b
     | entails (_  , ChEq (_,_)) = false
 
@@ -234,13 +236,11 @@ struct
     | preUnify _ _ _ _ _ = Err.error "This shoud not happen"
 
 
-  val symtop = topology @ map Tpl.swap topology
-
   fun subset x y = x |> all (fn xm => Lst.member xm y)
 
   fun solve' cs =
   let
-    val m = preUnify (flattenConstraints cs) Top [] [] []
+    val m = preUnify (flattenConstraints cs) unit [] [] []
     (* omega - output conn (init(n) < x)
      * kapa - input conn (x > init(n) ) *)
     fun getO omega =
@@ -249,6 +249,7 @@ struct
           | _ => Err.undefined "More than one output conn in solve'")
   in
     m <//bindE//> (fn (sigma,psi,omega,kapa) =>
+        let val topology = topologyFromA psi in
         case (null omega, null kapa) of
              (false, true) => let val (n,x) = getO omega in
                RIGHT ((x,Init (Int n))::sigma,psi) end
@@ -272,6 +273,7 @@ struct
                  else LEFT ""
                end
            | (true, true) => RIGHT (sigma, psi)
+        end
     )
   end
 
@@ -331,7 +333,17 @@ struct
     | printC (InputConn (t1,t2)) = printT t1 ^ ">" ^ printT t2
     | printC (ChEq (t1,t2)) = printT t1 ^ "==" ^ printT t2
 
-  fun printA psi = "1"
+  fun printA (LinkSet psi) =
+    psi |> 
+    map (fn (LinkA (x,y,st,n,ts)) =>
+        "<" ^
+        printT x ^ "," ^
+        printT y ^ "," ^
+        (case st of Linked => "linked" | _ => "unlinked") ^ "," ^
+        printT n ^ "," ^
+        printT ts ^ ">") |>
+    intersperse "," |>
+    String.concat
 
   structure Parser = Parser(StringStream)
   open Parser
@@ -373,7 +385,22 @@ struct
             (fn t2 => return (OutputConn (t1, t2)) ) ) )
 
 
-  fun assr () = Lex.stok "1" >> return Top
+  fun assrE () = 
+                    Lex.stok "<" >>
+                    term () >>=
+    (fn x =>        Lex.stok "," >>
+                    term () >>=
+    (fn y =>        Lex.stok "," >>
+                    ((Lex.stok "linked" >> return Linked) </choice/>
+                     (Lex.stok "unlinked" >> return Unlinked)) >>=
+    (fn st =>       Lex.stok "," >>
+                    term () >>=
+    (fn nm =>       Lex.stok "," >>
+                    term () >>=
+    (fn ts =>       Lex.stok ">" >>
+                    return (LinkA (x,y,st,nm,ts)) )))))
+
+  fun assr () = (assrE () </sepby/> (Lex.stok ",")) >>= return o LinkSet
 
   fun parseResult p s =
     case Parser.parse (delayed p) (StringStream.make s) of

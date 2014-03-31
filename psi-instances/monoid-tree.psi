@@ -1,0 +1,16 @@
+
+Sink(nodeId, sinkChan) <=
+    '"init(nodeId)"!<sinkChan> .
+    ! "data(sinkChan)"(x). ProcData<x> ;
+
+Node(nodeId, nodeChan, datum) <=
+    "init(nodeId)"?(chan) .
+    '"init(nodeId)"!<nodeChan> .
+    '"data(chan)"<datum> .
+    ! "data(nodeChan)"(x). '"data(chan)"<x>  ;
+
+System3(datum1,datum2) <=
+    (new sinkChan)  Sink<0, sinkChan>      |
+    (new chan1)     Node<1, chan1, datum1> |
+    (new chan2)     Node<2, chan2, datum2>
+;

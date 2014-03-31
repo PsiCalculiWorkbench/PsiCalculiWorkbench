@@ -20,15 +20,14 @@ ResponseChan(inp,out) <= inp(b).
     case True : 'out<b>    .ResponseChan<inp,out>
       [] True : 'out<"ERR">.ResponseChan<inp,out> ;
 
-ABP(i,o,bitS,bitR) <= (new SnDc,DcRe,ReRc,RcSn)(
-    Sender<i,RcSn,SnDc,bitS>   | DataChan<SnDc,DcRe> |
-    Receiver<o,DcRe,ReRc,bitR> | ResponseChan<ReRc,RcSn> ) ;
-
 Buffer(i,o) <= i(x).'o<x>;
 
 RecBuffer(i,o) <= i(x).'o<x>.RecBuffer<i,o>;
 
-
-ABP2(i,o,sb,rb) <= (new RcSn, SnRc) (
+ABP(i,o,sb,rb) <= (new RcSn, SnRc) (
     Sender<i,RcSn,SnRc,sb> | Receiver<o,SnRc,RcSn,rb> );
+
+ABP2(i,o,bitS,bitR) <= (new SnDc,DcRe,ReRc,RcSn)(
+    Sender<i,RcSn,SnDc,bitS>   | DataChan<SnDc,DcRe> |
+    Receiver<o,DcRe,ReRc,bitR> | ResponseChan<ReRc,RcSn> ) ;
 
