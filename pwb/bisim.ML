@@ -723,6 +723,7 @@ struct
 
     fun bisim env p q =
       (Table.reset ();
+      NameGen.reset ();
       close env p q;
       (always id (Table.find p q), Table.toList ()))
 
