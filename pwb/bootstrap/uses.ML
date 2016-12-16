@@ -184,7 +184,7 @@ struct
     val ()    = TextIO.closeIn fh
   in
     case files of
-         LEFT (Parser.Error msg,_) => raise UsesError msg
+         LEFT (m as (Parser.Error msg,s)) => raise UsesError (errormsg m ^ " in file " ^ filename) 
        | LEFT (Parser.Fail msg,_)  => []
        | RIGHT (fs,_)              => fs
   end

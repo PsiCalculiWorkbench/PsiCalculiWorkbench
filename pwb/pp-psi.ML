@@ -48,8 +48,8 @@ sig
   val a  : PPInst.Inst.assertion -> PP.document
 end =
 struct
-  open A
   open Missing
+  open A
   open PP
   open PPInst
   structure StringParser = Parser(StringStream)
@@ -216,7 +216,8 @@ sig
   val ppClauseFormals : Cl.clause -> PP.document
 end =
 struct
-  open A open PP open Missing
+  open Missing
+  open A open PP 
   structure PPA = PrettyPrinterAux(PP) open PPA
 
   (*

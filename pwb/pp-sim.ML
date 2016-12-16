@@ -22,8 +22,8 @@ functor PPStrongAction
       val ppAction : Act.action -> PP.document
     end =
 struct
-
-  open A open PP open Missing
+  open Missing
+  open A open PP 
   structure PPA = PrettyPrinterAux(PP)
   open PPA
   structure EPInst = EscapedPsiInstancePrettyPrinter(struct

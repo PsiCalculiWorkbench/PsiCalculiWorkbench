@@ -151,6 +151,7 @@ sig
   val filter       : ('a -> bool) -> 'a list -> 'a list
   val sngl         : 'a -> 'a list
   val zip          : 'a list -> 'b list -> ('a * 'b) list
+  val unzip        : ('a * 'b) list -> ('a list) * ('b list)
   val zipwith      : ('a * 'b -> 'c) -> 'a list -> 'b list -> 'c list
   val intersperse  : 'a -> 'a list -> 'a list
   val enum         : int -> int -> int list
@@ -159,6 +160,7 @@ sig
   val forall       : ('a -> unit) -> 'a list -> unit
   val nubBy        : ('a * 'a -> bool) -> 'a list -> 'a list
   val nub          : ''a list -> ''a list
+  val partitionBy  : ('a -> ''b) -> 'a list -> 'a list list
 end = struct
   open List
   open Err
@@ -201,6 +203,7 @@ end = struct
   fun sngl a = [a]
 
   fun zip a b = ListPair.zip (a,b)
+  fun unzip a = ListPair.unzip a
 
   fun zipwith f a b = List.map f $ zip a b
 
@@ -230,6 +233,15 @@ end = struct
     | nubBy eq (x::xs) = x :: nubBy eq (List.filter (not o (eq/>x)) xs)
 
   fun nub xs = nubBy (op=) xs
+
+  fun partitionBy _ [] = []
+    | partitionBy f (x::xs) =
+      let
+	  val fx = f x
+	  val (l,r) = List.partition (fn y => fx = f y) xs
+      in
+	  (x::l)::partitionBy f r
+      end
 end;
 
 structure Either :
@@ -284,8 +296,19 @@ struct
 end;
 
 
+structure Str :
+sig
+  val join : string -> string list -> string
+end =
+struct
+  fun join x (a::b::xs) = a ^ x ^ join x (b::xs)
+    | join x (a::[]) = a
+    | join x ([]) = "" 
+end;
+
 structure Missing =
 struct
+  open Str
   open Fun
   open Opt
   open Tpl

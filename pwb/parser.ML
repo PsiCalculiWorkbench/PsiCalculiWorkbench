@@ -40,7 +40,7 @@ sig
   val >>      : 'a parser * 'b parser -> 'b parser
 
   val delayed : (unit -> 'a parser) -> 'a parser
-  val error   : string -> 'result parser
+  val fail    : string -> 'result parser
   val zero    : 'result parser
   val choice  : 'a parser * 'a parser -> 'a parser
   val eof     : 'a -> 'a parser
@@ -54,6 +54,8 @@ sig
 
   val many   : 'a parser -> ('a list) parser
   val many1  : 'a parser -> ('a list) parser
+  val manyfold : ('a -> 'a parser) -> 'a -> 'a parser
+  val manyfold1 : ('a -> 'a parser) -> 'a -> 'a parser
   val sepby  : 'a parser * 'b parser -> 'a list parser
   val sepby1 : 'a parser * 'b parser -> 'a list parser
 
@@ -69,8 +71,8 @@ sig
 
   val both : 'a parser -> 'b parser -> ('a * 'b) parser
 
-  (* TODO : *)
-  (*val streamTrans : 'a parser -> 'a parser*)
+  val failmsg : string fail -> string
+  val errormsg : string fail * Stream.stream -> string
 end;
 
 
@@ -85,6 +87,13 @@ struct
 
   datatype 'a fail = Fail of 'a | Error of 'a
 
+  fun failmsg (Fail m) = m
+    | failmsg (Error m) = m
+
+  fun errormsg (fail, stream) =
+    case Stream.pos stream of
+         (line,col,ch) => (Int.toString line) ^ ":" ^ (Int.toString col) ^":" ^ (failmsg fail)
+
   datatype 'a parser = Parser of
      stream -> (string fail * stream, 'a * stream) either
 
@@ -95,7 +104,7 @@ struct
 
   fun delayed f = Parser (fn s => (parse $ f ()) s)
 
-  fun error  e = Parser (fn s => LEFT  (Fail e, s))
+  fun fail e = Parser (fn s => LEFT (Fail e, s))
   val zero     = Parser (fn s => LEFT  (Fail "zero", s))
   fun return a = Parser (fn s => RIGHT (a, s))
 
@@ -112,13 +121,12 @@ struct
 
   fun p >> f = p >>= (fn _ => f)
 
-  (* Ordered choice. Tries the first parser, if it succeds returns its result,
-  * otherwise tries the second parser and if it succeeds returns its result,
-  * and if it fails reutrns the first parser's failure *)
   fun choice (p,q) = Parser (fn s =>
-    parse p s |> either (fn fl => parse q s |> either (fn _ => LEFT fl)
-                                                      returnE)
-                        returnE)
+    case parse p s of
+         LEFT (m as (Error e, s)) => LEFT m
+       | LEFT (Fail e, _) => parse q s
+       | RIGHT m => RIGHT m
+    )
 
   val item = Parser (fn s =>
     case head s of
@@ -139,7 +147,7 @@ struct
         else zero)
 
   fun chr c =
-    (sat (op = /> c)) </choice/> error ("character "
+    (sat (op = /> c)) </choice/> fail ("character "
                                        ^(Char.toString c) ^" was expected")
 
   fun str' [] = return ()
@@ -150,7 +158,7 @@ struct
 
   fun str s =
     (str' (String.explode s) >>
-    return s) </choice/> error ("string " ^ s ^ " expected")
+    return s) </choice/> fail ("string " ^ s ^ " expected")
 
   fun until' p s a =
     case parse p s of
@@ -179,6 +187,12 @@ struct
     return (x::xs)
     ))
 
+  fun manyfold p a  = manyfold1 p a </choice/> return a
+  and manyfold1 p a =
+    p a         >>= (fn b  =>
+    manyfold p b >>= (fn c =>
+    return c
+    ))
 
   fun sepby (p, sep) = (p </sepby1/> sep) </choice/> return []
   and sepby1 (p, sep) =
@@ -314,3 +328,64 @@ struct
   fun isEnd (s,_) = TextIO.StreamIO.endOfStream s
 end;
 
+
+structure AbstractParserStream : 
+sig
+  include PARSER_STREAM
+  val stringToStream : string -> stream
+  val ioToStream : TextIO.instream -> stream
+end  =
+struct
+  datatype stream = Stream of (
+    (unit -> (char * stream) option) *
+    (unit -> bool) *
+    (unit -> bool) *
+    (unit -> int*int*int) *
+    (unit -> stream)
+  )
+
+  fun head (Stream (h,r,e,p,d)) = h ()
+  fun isReady (Stream (h,r,e,p,d)) = r ()
+  fun isEnd (Stream (h,r,e,p,d)) = e ()
+  fun pos (Stream (h,r,e,p,d)) = p ()
+  fun resetPos (Stream (h,r,e,p,d)) = d ()
+
+  type base_stream = stream
+  fun make s = s
+
+  fun stringToStream s =
+  let
+    fun r ss () = StringStream.isReady ss
+    and e ss () = StringStream.isEnd ss
+    and p ss () = StringStream.pos ss
+    and d ss () = m (StringStream.resetPos ss)
+    and h ss () =
+      case StringStream.head ss of
+           SOME (c,ss') => SOME (c, m ss')
+         | NONE => NONE
+    and m ss = Stream (h ss, r ss, e ss, p ss, d ss)
+
+    val ss = StringStream.make s
+  in
+    m ss
+  end
+
+  fun ioToStream s =
+  let
+    fun r ss () = ParserStreamIO.isReady ss
+    and e ss () = ParserStreamIO.isEnd ss
+    and p ss () = ParserStreamIO.pos ss
+    and d ss () = m (ParserStreamIO.resetPos ss)
+    and h ss () =
+      case ParserStreamIO.head ss of
+           SOME (c,ss') => SOME (c, m ss')
+         | NONE => NONE
+    and m ss = Stream (h ss, r ss, e ss, p ss, d ss)
+
+    val ss = ParserStreamIO.make s
+  in
+    m ss
+  end
+end;
+
+structure AbstractParser = Parser(AbstractParserStream);

@@ -6,6 +6,7 @@
 
 . "$PSI_WORKBENCH_HOME/tools/common.sh"
 INTERACTIVE=no
+SUSPENDCAT=no
 
 
 function help {

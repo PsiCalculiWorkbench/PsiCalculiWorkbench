@@ -5,15 +5,20 @@
 
 signature PSI_PARSER =
 sig
-  structure Psi    : PSI
   structure Parser : PARSER
+  structure Psi    : PSI
+  structure Cl     : PSI_CLAUSE
+  sharing Cl.Psi = Psi
 
-  val agent : unit -> Psi.psi Parser.parser
-  val term  : Psi.Inst.term Parser.parser
-  val name  : Psi.Inst.name Parser.parser
-  val processConstant : unit -> string Parser.parser
+  val agent              : unit -> Psi.psi Parser.parser
+  val term               : Psi.Inst.term Parser.parser
+  val name               : Psi.Inst.name Parser.parser
+  val processConstant    : unit -> string Parser.parser
+  val processClause      : unit -> Cl.clause Parser.parser
+  val processClauses     : unit -> (Cl.clause list) Parser.parser
+  val onlyProcessClauses : unit -> (Cl.clause list) Parser.parser
 
-  val t : string -> string Parser.parser
+  val t  : string -> string Parser.parser
   val ws : char list Parser.parser
 end;
 
@@ -24,7 +29,7 @@ sig
   val parseTerm : string -> (string, Psi.Inst.term) Either.either
   val parseCond : string -> (string, Psi.Inst.condition) Either.either
   val parseAssr : string -> (string, Psi.Inst.assertion) Either.either
-  val var : (Psi.Inst.name -> Psi.Inst.term) option
+  val var       : (Psi.Inst.name -> Psi.Inst.term) option
 end;
 
 
@@ -108,7 +113,7 @@ struct
 
   fun stok s =
                     (ws >> str s >> return ())
-       </choice/>   (P.error (s ^ " expected"))
+       </choice/>   (P.fail (s ^ " expected"))
 end;
 
 
@@ -117,12 +122,15 @@ functor PsiParser
     sig
       structure Parser : PARSER
       structure Req    : PSI_PARSER_REQ
+      structure Cl : PSI_CLAUSE
+      sharing Req.Psi = Cl.Psi
     end) : PSI_PARSER
 =
 struct
   structure Psi    = A.Req.Psi
   structure Parser = A.Parser
   structure B      = PsiLexerParserComb(Parser)
+  structure Cl     = A.Cl
   open B
 local
   open Missing
@@ -131,16 +139,11 @@ local
   open Psi
 in
 
-
-  fun parseLiteral p = literal >>= Either.either Parser.error return o p
+  fun parseLiteral p = literal >>= (Either.either (Parser.fail) return) o p
   val name = parseLiteral parseName
-    </choice/> error "Name was expected"
   val assr = parseLiteral parseAssr
-    </choice/> error "Assertion was expected"
   val cond = parseLiteral parseCond
-    </choice/> error "Condition was expected"
   val term = parseLiteral parseTerm
-    </choice/> error "Term was expected"
 
 
   fun tok p = ws >> p >>= (fn x => ws >> return x)
@@ -168,7 +171,7 @@ in
                 name </sepby1/> (t ",") >>=
     (fn x =>    nofail $ t ")" >>
                 (case A.Req.var of
-                     NONE => Parser.error
+                     NONE => Parser.fail
                         ("Abbreviated form of Input is not supported" ^
                          " by the instance!")
                    | SOME v => return (x, List.map v x))
@@ -223,7 +226,7 @@ in
                     (name </sepby1/> (t ",")) >>=
     (fn ns =>   t ")" >>
                 delayed (restrictedAgent ["parallel"]) >>=
-    (fn a =>    return (List.foldr Restriction a ns)
+    (fn a =>    return (List.foldr Restriction a (Lst.reverse ns))
     ))
 
   and replication () =
@@ -273,11 +276,34 @@ in
 
 
   and restrictedAgent l () =
-    List.foldr choice (error "Agent expected") $
+    List.foldr choice (fail "Agent expected") $
         map snd $
             (filter (not o (flip member) l o fst) $ agentProds ())
 
   and agent () = restrictedAgent [] ()
+
+
+  fun processClause () =
+    processConstant () >>= (fn c =>
+    nofail (
+    stok "(" >>
+    (name </sepby/> (stok ",")) >>= (fn names =>
+    stok ")" >>
+    stok "<=" >> nofail (
+    agent () >>= (fn a =>
+    ws >> (stok ";") >>
+    return (Cl.Clause (c,names,a))
+    )))))
+
+
+  fun processClauses () =
+    many (processClause ())
+
+  fun onlyProcessClauses () =
+    processClauses () >>= (fn cls =>
+    ws >> eof "" >>
+    return cls
+    )
 
 end
 end;

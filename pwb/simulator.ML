@@ -418,6 +418,12 @@ sig
   val reduceA :
     ClEnv.env -> Psi.psi -> action_type -> Tr.transition list
 
+  val reduce' :
+    ClEnv.env -> Psi.psi -> (Tr.transition * (int list * int) option) list
+
+  val reduceA' :
+    ClEnv.env -> Psi.psi -> action_type -> (Tr.transition * (int list * int) option) list
+
   sharing Psi = ClEnv.Cl.Psi = Tr.Psi
   sharing Psi.Inst = Constraint.Inst
 end;
@@ -452,8 +458,48 @@ struct
   open A
   structure C = Sim.Constraint
 
+  structure P = Sim.Psi
+
+         (* WARNING: all top-level BrIn transitions are discarded. 
+                     This is the desired behaviour for SHIA
+                     authenticated base station broadcasts,
+                     but not when modelling an open system that
+                     can receive broadcasts from the environment.
+
+                     To get BrIn transitions back in, don't call
+                     this function.
+          *)
+  val removeBrIn = 
+      List.filter (fn ((_,Sim.Tr.Act.BrInput _,_,_),_) => false
+                    | _ => true)
+
+  fun onlyMostListeners trs = 
+      let
+          val (brs,others) = List.partition (fn (_,tup) => isSome tup) trs
+          val brs' = map (fn (a,b) => (a,valOf b)) brs
+      in
+          map fst others @
+          (
+           Lst.partitionBy (fn (_,(path,_)) => path) brs' |>
+                           map
+                           (fn (f::r) =>
+                               List.foldr (fn ((p,(pth,rls)),(p',(pth',rls'))) => 
+                                              if rls >= rls' then
+                                                  (p,(pth,rls))
+                                              else
+                                                  (p',(pth',rls')))
+                                          f r
+                             | [] => raise Domain)
+                           |> map fst
+          )
+      end
+
   fun onlySolvable trs =
     List.filter (fn (tr as (_,_,_,s,_)) =>
+        s |> either (const false) (const true)) trs
+
+  fun onlySolvable' trs =
+    List.filter (fn (tr as (_,_,_,s,_),_) =>
         s |> either (const false) (const true)) trs
 
   fun solve c trs = trs |>
@@ -461,11 +507,17 @@ struct
         let val aggrC = c <//C.compose//> cstr
         in (p, act, aggrC, Slv.solve aggrC, p') end)
 
+  fun solve' c trs = trs |>
+    map (fn (tr as (p,act,cstr,p'),b) =>
+        let val aggrC = c <//C.compose//> cstr
+        in ((p, act, aggrC, Slv.solve aggrC, p'),b) end)
+
   fun reduce env proc c =
-    Sim.reduce env proc |> solve c |> onlySolvable
+    Sim.reduce' env proc |> removeBrIn |> solve' c |> onlySolvable' |> onlyMostListeners
 
   fun reduceA env proc tAct c =
-    Sim.reduceA env proc tAct |> solve c |> onlySolvable
+    Sim.reduceA' env proc tAct |> removeBrIn |> solve' c |> onlySolvable' |> onlyMostListeners
+
 end;
 
 
@@ -735,8 +787,6 @@ in
     in
       r @ s
     end
-
-    (* TODO: add a wellformedness condition before simulating *)
 
     fun eval_axiom e (TAU, (ip as (P.Tau p), _)) =
       SOME (ip, Act.Tau, Constr [], p)
@@ -1130,7 +1180,58 @@ in
     tr'
   end
 
+  fun pathToSpeaker (D.EInf(l,RES _,_)) = pathToSpeaker(hd l)
+    | pathToSpeaker (D.EInf(l,PARLEFT,_)) = 0::pathToSpeaker(hd l)
+    | pathToSpeaker (D.EInf(l,PARRIGHT,_)) = 1::pathToSpeaker(hd l)
+    | pathToSpeaker (D.EInf(l,REPCOM,_)) = pathToSpeaker(hd l) (*check*)
+    | pathToSpeaker (D.EInf(l,REPI,_)) = pathToSpeaker(hd l)
+    | pathToSpeaker (D.EInf(l,COMLEFT,_)) = 0::pathToSpeaker(hd l) (*check*)
+    | pathToSpeaker (D.EInf(l,COMRIGHT,_)) = 1::pathToSpeaker(hd(tl l)) (*check*)
+    | pathToSpeaker (D.EInf(l,INVOCATION,_)) = pathToSpeaker(hd l)
+    | pathToSpeaker (D.EInf(D.EInf(l',rule,rs as (p,_,_,_))::l,CASE c,(P.Case cases,_,_,_))) =
+      let
+          val rcases = List.filter (fn (c',_) => P.Inst.Cond.eqData(c,c')) cases |> map Tpl.snd
+      in
+          case rcases |> Vector.fromList |> Vector.findi (fn (_,p') => P.eqData(p,p')) of
+              SOME(i,_) => i::pathToSpeaker(D.EInf(l',rule,rs))
+            | NONE => Err.undefined "Simulator.pathToSpeaker ill-formed derivation tree"
+      end
+    | pathToSpeaker _ = []
+
+  fun isBroadcastAction (D.EInf(l,rule,_)) = 
+      case rule of
+          BRIN => true
+        | BROUT => true
+        | _ => List.exists isBroadcastAction l
+
+  fun comms (D.EInf(l,rule,_)) =
+      List.foldr (fn (t,s) => comms t + s)
+      (case rule of
+           COMLEFT => 1
+         | COMRIGHT => 1
+         | _ => 0) l
+      
+
+  fun reduceA' e p ac =
+  let
+    val ac' = case ac of
+                  ANYa => [INa,OUTa,BRINa,BROUTa,TAUa]
+                | VISa => [INa,OUTa,BRINa,BROUTa]
+                | _    => [ac]
+    val tree = D.eval_all e (p,ac')
+    val tr  = map (fn (D.EInf (_,_,conclusion)) => conclusion) tree
+    val tr' = map (fn (p, alpha, c, p') => (p,alpha, advance c, p')) tr
+  in      
+    map (fn x => if isBroadcastAction x then
+                     SOME (pathToSpeaker x, comms x)
+                 else
+                     NONE)
+        tree |> Lst.zip tr'
+  end
+
   fun reduce e p = reduceA e p ANYa
+
+  fun reduce' e p = reduceA' e p ANYa
 
   fun debugTree p =
     D.eval_all ClEnv.empty p

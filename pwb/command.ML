@@ -16,6 +16,7 @@
 signature PSI_COMMAND_INTERPRETER =
 sig
   val start : unit -> unit
+  val startFromFile : string -> unit
 end;
 
 
@@ -37,10 +38,16 @@ struct
   open Missing
   open A
 
-  structure Psi = SI.Psi
-  structure Cl = SI.ClEnv.Cl
+  structure Psi     = SI.Psi
+  structure Cl      = SI.ClEnv.Cl
   structure Guarded = PsiGuarded(SI)
-  structure PP = WPrettyPrinter
+  structure PP      = WPrettyPrinter
+
+  structure PsiParser = PsiParser(struct
+    structure Parser = Parser(ParserStreamIO)
+    structure Req    = PsiParserReq
+    structure Cl     = Cl
+  end)
   structure PsiPP = PrettyPrintPsi(struct
     structure PP     = PP
     structure Psi    = Psi
@@ -55,10 +62,6 @@ struct
     structure PP    = PP
     structure Cl    = Cl
     structure PPPsi = PsiPP
-  end)
-  structure PsiParser = PsiParser(struct
-    structure Parser = Parser(ParserStreamIO)
-    structure Req    = PsiParserReq
   end)
   structure PsiB = PsiLexerParserComb(PsiParser.Parser)
   structure Env  = SI.ClEnv
@@ -201,7 +204,7 @@ struct
        )
         handle
         (Err.Error msg) => (output ctx ("Error: " ^ msg); interact ctx (discard stream))
-          | _ => (output ctx "Error occured"; interact ctx (discard stream))
+          | exn => (output ctx ("Error: " ^ (PolyML.makestring exn)); interact ctx (discard stream))
   in
     (c,s)
   end;
@@ -252,8 +255,8 @@ struct
   fun ppConds [phi] = PsiPP.c phi
     | ppConds phis  =
       text "(" </join/>
-	   (sep (text " /\\ ") $ map PsiPP.c phis)
-	   </join/> text ")"
+           (sep (text " /\\ ") $ map PsiPP.c phis)
+           </join/> text ")"
 
   fun ppAtomicConstraint ctx (avec, psi, phis) =
     (if null avec
@@ -353,7 +356,7 @@ struct
     sl sol
   end
 
-  fun ppSols ctx sols = 
+  fun ppSols ctx sols =
     case sols of
          RIGHT sol => ppSol ctx sol
        | LEFT msg => text "No solution found: " </join/> text msg
@@ -396,8 +399,6 @@ struct
   fun drop ctx a =
     updateEnv ctx ((flip Env.remove) a)
 
-
-
   end (* local open WPrettyPrinter open PPAux *)
 
 
@@ -415,6 +416,11 @@ struct
                 name </sepby/> (t ",") >>=
     (fn xvec => t ")" >>
                 return xvec)) </choice/> (return [])
+
+
+  val a = agent
+  fun agent () = a () >>= (fn p =>
+    if Psi.isWellSorted [] p then return p else Err.error "agent is not well sorted")
 
 
   fun parseClause ctx =
@@ -633,13 +639,14 @@ struct
     (fn n =>    ws >> tr () >>
                 return (drop ctx n))
 
-
+  fun dropAllC ctx =
+    t "purge"  >> tr () >>= (fn _ => return (freshState ()))
 
   fun number () =
                 sat (fn c => c <> #"0" andalso Char.isDigit c) >>=
     (fn a =>    many (sat Char.isDigit) >>=
     (fn r =>    maybe
-                    (error "Could not parse integer")
+                    (fail "Could not parse integer")
                     return
                     (Int.fromString (String.implode (a :: r)))
     ))
@@ -699,7 +706,7 @@ struct
                 (ws >> str "b" >> nofail (trS () >>
                 delayed (fn () =>
                 (case agents of
-                      [] => Parser.error "There are no more agents to backtrack to"
+                      [] => Parser.fail "There are no more agents to backtrack to"
                     | _ => return (ctx,agents)))))
     </choice/>
                 (  ((ws >> str "q" >> trS ()) </choice/> (ws >> eof ())) >>
@@ -786,11 +793,26 @@ struct
   val intP = many1 (sat Char.isDigit) >>=
     return o always id o Int.fromString o String.concat o map Char.toString
 
+  val boolP =
+      (t "true" >> return true)
+      </choice/>
+      (t "false" >> return false)
+
+  fun transGraphOpt (b,s,l) =
+      t "-" >>
+	 (t "r" >> ws >> boolP >>= (fn b => return (b,s,l)))
+	    </choice/>
+	 (t "f" >> ws >> PsiB.literal >>= (fn filename => return (b,filename,l)))
+	    </choice/>
+	 (t "d" >> ws >> intP >>= (fn lvl => return (b,s,lvl)))
+
+(*  fun transGraphOpts*)
+
   fun transGraphC ctx =
-    (t "transgraph" >> ws >> intP >>=
-    (fn lvl => agent () >>=
+    (t "transgraph" >> (manyfold (fn x => ws >> transGraphOpt x) (true, "graph-viz.dot",~1)) >>= (fn (b,s,lvl) =>
+    agent () >>=
     (fn p => tr () >>
-        (Viz.viz (getEnv ctx) p lvl "graph-viz.dot" ;
+        (Viz.viz (getEnv ctx) p lvl s b;
         return ctx))))
 
   fun toggleSimpC ctx =
@@ -804,53 +826,87 @@ struct
     (fn _ => (return (setEof ctx)))
 
 
+  (*structure PsiParser = PsiParser(struct
+    structure Parser = Parser(ParserStreamIO)
+    structure Req    = PsiParserReq
+    structure Cl     = Cl
+  end)
+  *)
+  fun readC ctx =
+    stok "read" >> ws >>  PsiB.literal >>= (fn filename =>
+    tr () >>
+    MissingIO.withOpenFile filename (fn instream =>
+    case parse (PsiParser.onlyProcessClauses ()) (ParserStreamIO.make instream) of
+         Either.RIGHT (cls,_) =>
+         let
+           val env' =
+             List.foldr (fn ((cl as Cl.Clause (a,_,_)),e) => Env.extend e a cl)
+                        (getEnv ctx) cls
+         in
+           return (updateEnv ctx (const env'))
+         end
+       | Either.LEFT (fail,s) => (output ctx (errormsg (fail,s)); return ctx)
+    ))
+
+
+
   val helpString =
-    "help                      - prints this help message\n" ^
-    "env                       - prints the current process environment\n" ^
-    "drop <procname>           - removes clauses from the environment with <procname>\n" ^
-    "input \"filename\"          - reads commands from a file filename\n" ^
-    "sstep <proc>              - enters the symbolic simulator for the process <proc>;\n" ^
-    "                            enter a number to select an agent to follow, b to backtrack, and q to exit\n" ^
-    "wsstep <proc>             - enters the weak symbolic simulator; accepts the same commands as sstep\n" ^
-    "<proc> ~ <proc>           - computes the weak bisimulation\n" ^
-    "<proc> ~w <proc>          - computes the weak bisimulation (alias for the above)\n" ^
-    "<proc> ~s <proc>          - computes the strong bisimulation\n" ^
-    "<proc> <w <proc>          - computes the weak simulation\n" ^
-    "<proc> <s <proc>          - computes the strong simulation\n" ^
-    "transgraph <depth> <proc> - computes the transition graph for <proc>, follows at most <depth> transitions\n" ^
-    "                            writes this graph to graphviz.dot in the current directory\n" ^
-    "agent <proc>              - pretty prints the process <agent>\n" ^
+    "help                        - prints this help message\n" ^
+    "env                         - prints the current process environment\n" ^
+    "drop <procname>             - removes clauses from the environment with <procname>\n" ^
+    "purge                       - removes all clauses from the environment\n" ^
+    "input \"filename\"            - reads commands from a file filename\n" ^
+    "read \"filename\"             - reads clauses from a file \"filename\" and replaces the environment\n" ^
+    "sstep <proc>                - enters the symbolic simulator for the process <proc>;\n" ^
+    "                              enter a number to select an agent to follow, b to backtrack, and q to exit\n" ^
+    "wsstep <proc>               - enters the weak symbolic simulator; accepts the same commands as sstep\n" ^
+    "<proc> ~ <proc>             - computes the weak bisimulation\n" ^
+    "<proc> ~w <proc>            - computes the weak bisimulation (alias for the above)\n" ^
+    "<proc> ~s <proc>            - computes the strong bisimulation\n" ^
+    "<proc> <w <proc>            - computes the weak simulation\n" ^
+    "<proc> <s <proc>            - computes the strong simulation\n" ^
+    "transgraph [options] <proc> - computes the transition graph for <proc>.\n" ^
+    "\n" ^
+    "                              Options:\n" ^
+    "                                -d <number>      follows at most <number> transitions.\n" ^
+    "                                                 If unset, follow until process terminates.\n" ^
+    "                                -r (true|false)  Toggle reachability analysis on/off (default: on)\n" ^
+    "                                -f \"filename\"    Set output file (default: graphviz.dot)\n" ^
+
+    "agent <proc>                - pretty prints the process <agent>\n" ^
     "def { <procname>(<formals>) <= <proc>; ... } - adds to the environment the clauses specified\n" ^
     "<procname>(<formals>) <= <proc> - the same as above, but only for one clause"
 
   fun simpleWS () = many (sat Char.isSpace)
-  fun simpleWSNoNL () = 
+  fun simpleWSNoNL () =
     many (sat (fn #"\n" => false | c => Char.isSpace c))
 
   fun helpC ctx =
-    ((simpleWS () >> str "help" >> 
+    ((simpleWS () >> str "help" >>
      simpleWSNoNL () >> chr #"\n" >>= (fn _ =>
         (output ctx helpString ; return ctx))))
 
   fun commands () =
-    helpC                          :: 
-    exitC                          :: 
-    clauseC                        :: 
-    letClausesC                    :: 
-    redundantDelim                 :: 
-    envC                           :: 
-    dropC                          :: 
-    inputC                         :: 
-    sstepC                         :: 
-    wsstepC                        :: 
-    agentC                         :: 
-    bisimC "~s" Bisim.Strong.bisim :: 
-    bisimC "~w" Bisim.Weak.bisim   :: 
-    bisimC "<s" Bisim.Strong.sim   :: 
-    bisimC "<w" Bisim.Weak.sim     :: 
-    bisimC "~" Bisim.Weak.bisim    :: 
-    toggleSimpC                    :: 
-    transGraphC                    :: 
+    helpC                          ::
+    exitC                          ::
+    clauseC                        ::
+    letClausesC                    ::
+    redundantDelim                 ::
+    envC                           ::
+    dropC                          ::
+    dropAllC                       ::
+    inputC                         ::
+    sstepC                         ::
+    wsstepC                        ::
+    agentC                         ::
+    readC                          ::
+    bisimC "~s" Bisim.Strong.bisim ::
+    bisimC "~w" Bisim.Weak.bisim   ::
+    bisimC "<s" Bisim.Strong.sim   ::
+    bisimC "<w" Bisim.Weak.sim     ::
+    bisimC "~" Bisim.Weak.bisim    ::
+    toggleSimpC                    ::
+    transGraphC                    ::
     []
 
   and statement (ctx : command_state) =
@@ -864,7 +920,7 @@ struct
     fun eof ctx =
       if isEof ctx
         then return (unsetEof ctx)
-        else error "-- End of input unexpected"
+        else fail "-- End of input unexpected"
 
     fun script ctx =    (eof ctx)
         </choice/>      (statement ctx >>= (fn c => nofail $ script c))
@@ -907,6 +963,9 @@ struct
   in
     ()
   end
+
+  fun startFromFile n =
+      inputFile (freshState ()) n |> ignore
 
 end;
 
