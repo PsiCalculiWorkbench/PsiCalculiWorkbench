@@ -1,60 +1,73 @@
 Psi-calculi Workbench (Pwb)
----------------------------
+===========================
 
 Pwb is a generic tool and framework for implementing process calculi. It
 is based on the concurrency framework psi-calculi. Pwb allows for
 writing calculi which are parametric on data, and logics. Pwb provides
 (weak and strong) symbolic bisimulation checking and execution.
 
+For reference, see the paper titled 
+["The Psi-Calculi Workbench: A Generic Tool for Applied Process Calculi"](http://user.it.uu.se/~ramgu264/papers/tecs15.pdf) 
+by Borgström, Gutkovas, Rodhe and Victor
+([alternatively](http://dl.acm.org/citation.cfm?doid=2724585.2682570)).
 
-Installing
-----------
+
+Requirements
+============
 
 Pwb depends on the Poly/ML compiler of Standard ML. You can fetch it from
-www.polyml.org.
+[www.polyml.org](http://www.polyml.org).
 
 Linux and Mac OS X
-------------------
+==================
 
 Typically Poly/ML can be install using a systems package manager:
 on Debian: apt-get install polyml, on Mac OS X it is available on both MacPorts
 and brew: 'port install polyml' and 'brew install polyml'.
 
-Unpack the tarball and set the environment variable PSI_WORKBENCH_HOME to the
+Unpack the tarball and set the environment variable `PSI_WORKBENCH_HOME` to the
 unpacked directory:
 
+```
 cd PsiWorkBench-yyyy.dd
 export PSI_WORKBENCH_HOME=`pwd`
 export PATH="$PATH:`pwd`/tools"
+```
 
 
 Windows
--------
+=======
 
 On windows, you need Cygwin (http://cygwin.com/). Install Cygwin together
 with gcc packages. Compile and install Poly/ML from www.polyml.org.
 
 In cygwin shell, execute:
 
+```
 cd PsiWorkBench-yyyy.dd
 export PSI_WORKBENCH_HOME=`pwd`
 export PATH="$PATH:`pwd`/tools"
+```
 
 
 Running
--------
+=======
 
 The main Pwb driver is located in tools/pwb. If you have set the environment
 variables as described in installing section, you should be able to execute:
 
+```
 $ pwb
+```
 
 To load example calculi, for example, pi-calculus found in psi-instances/:
 
+```
 $ cd psi-instances/
 $ pwb load-instance pi.ML
     ...
 pwb>
+```
 
 This uses the compiler in the interpreter mode. At the pwb> prompt type 'help'
 and enter to see the available commands.
@@ -62,6 +75,8 @@ and enter to see the available commands.
 For development of new instances and pwb itself, you should use pwb as wrapper
 for the compiler to properly load the dependencies, as:
 
+```
 $ pwb sml @file.ML
+```
 
 
