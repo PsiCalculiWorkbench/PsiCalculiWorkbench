@@ -1,0 +1,3 @@
+Text editor support, e.g., syntax highlighting, plugins.
+
+Currently there is just vim syntax highlighting available.
