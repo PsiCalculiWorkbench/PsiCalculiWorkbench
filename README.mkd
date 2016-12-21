@@ -18,8 +18,8 @@ Requirements
 Pwb depends on the Poly/ML compiler of Standard ML. You can fetch it from
 [www.polyml.org](http://www.polyml.org).
 
-Linux and Mac OS X
-==================
+Linux and macOS
+===============
 
 Typically Poly/ML can be install using a systems package manager:
 on Debian: apt-get install polyml, on Mac OS X it is available on both MacPorts
