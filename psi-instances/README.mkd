@@ -1,0 +1,30 @@
+
+
+To load a psi-calculus, execute
+
+```
+    tools/pwb load-instance <file.ML>
+```
+and, then
+```
+    read "<file.pwb>"
+```
+
+Contents
+========
+
+The `*.ML` files contains the instances. Most of the instances are provided
+with symbolic execution constraint solver.
+
+* `SMT-SHIA` - a model of the wireless sensor network protocol SHIA (Secure Hierarchical In-Network Aggregation). The instance is not specialised to wireless sensor networks. It accepts arbitrary first-order algebraic equtional theory as data and logic. It uses SMT solvers z3 and cvc4 for solving constraints.
+* `pi.ML`   - the standard pi-calculus instance.
+* `pi.psi` - some example processes of the pi-calculus.
+* `abp.ML` - the alternating bit protocol instance.
+* `abp.psi` - model of the alternating bit protocol.
+* `common-ether.ML`, `common-ether.psi` - common ether model (see Bengtson et al. 2011)
+* `fhss.ML`, `fhss.psi` - frequency hopping radio protocol model (see ibid.)
+* `vpccs.ML` - value passing CCS instance. Requires lp_solve [1] integer linear programming solver.
+* prefixed and suffixed with tree - various wireless sensor network tree building and aggregation protocols.
+
+
+[1]: http://lpsolve.sourceforge.net/
