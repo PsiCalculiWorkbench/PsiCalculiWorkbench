@@ -1,0 +1,51 @@
+@Sorts
+
+
+    lbl
+    mac	
+    tch
+    nonce
+
+@CSorts
+
+    ch key
+@Symbols
+
+#    f : (ch) => tch
+
+    Label        : (i) => lbl
+    AggrLabel    : (lbl,lbl) => lbl
+    EmptyLbl     : () => lbl
+    MAC          : (nonce,key) => mac
+
+    XOR          : (mac,mac) => mac
+
+    Query        : (ch) => tch
+    Verify       : (ch) => tch
+    Qsuccess     : () => tch
+    Offpath      : (ch) => tch
+
+
+@Constructors
+
+# Used for determining the type of data to be received on a channel,
+# it is a hack since pwb does not support pattern matching
+#    Query        : (ch) => tch
+#    Verify       : (ch) => tch
+#    Qsuccess     : () => tch
+#    Offpath      : (ch) => tch
+
+@Axioms
+
+#Commutativity
+    XOR(macX,macY) = XOR(macY,macX)
+    AggrLabel(lblX,lblY) = AggrLabel(lblY,lblX)
+
+#Associativity (comment these for better performance on 2-node network)
+    XOR(macX,XOR(macY,macZ)) = XOR(XOR(macX,macY),macZ)
+    AggrLabel(lblX,AggrLabel(lblY,lblZ)) = AggrLabel(AggrLabel(lblX,lblY),lblZ)
+
+#Distinctness of constructors
+    not(AggrLabel(lblX,lblY) = Label(iZ))
+    not(AggrLabel(lblX,lblY) = EmptyLbl)
+    not(Label(iX) = EmptyLbl)

@@ -1,0 +1,184 @@
+(* Querier channels 
+   channelBS : bidirectional channel between Querier and BS (Querier -> BS & BS-> Querier)
+   success : the successful value will be sent via this channel to where ever it needs to go
+   fail : the failure value will be sent via this channel to where ever it needs to go *)
+
+Querier(chQuerier,chBS, nonceQ, macXorAllAuthCode) <=
+    '"Query(chQuerier)"!<nonceQ>.
+    "Query(chBS)"(lblRoot).
+    '"Verify(chQuerier)"!<lblRoot>.
+    "Verify(chBS)"(macAuthCode).
+    case "macAuthCode = macXorAllAuthCode"    : '"Qsuccess"<0>
+    [] "not(macAuthCode = macXorAllAuthCode)" : 0;
+
+(****************************************)            
+
+(* NodeSense is a model of a SHIA sensor node
+   Node channels
+   channelParent : bidirectional channel between the node and its parent
+   channelLeft : bidirectional channel between the node and its left child
+   channelRight : bidirectional channel between the node and its right child
+   fail : the failure value will be sent via this channel to where ever it needs to go
+   A node is treated as a set of vertices such as a leaf vertex and an internal vertex.
+   Leaf vertex does sensing and internal vertex does aggregation, but they are still in one physical node.
+   Assume complete, binary commitment tree, so aggregate at each parent *)
+
+
+(* Base station *)
+InternalNode(chQuerier,chParent, chLeft, chRight) <=
+	"Query(chQuerier)"?(nonceQ).
+	"Query(chLeft)"(lblLeft).
+	"Query(chRight)"(lblRight).
+	'"Query(chParent)"<"AggrLabel(lblLeft,lblRight)">.
+	"Verify(chQuerier)"?(lblRoot).
+        '"Offpath(chLeft)"<lblRight>.
+        '"Offpath(chRight)"<lblLeft>.
+        "Verify(chLeft)"(macLeft).
+	"Verify(chRight)"(macRight).
+	'"Verify(chParent)"<"XOR(macLeft, macRight)">;
+
+(* One level below base station *)
+InternalNode1(chQuerier,chParent, chLeft, chRight) <=
+	"Query(chQuerier)"?(nonceQ).
+	"Query(chLeft)"(lblLeft).
+	"Query(chRight)"(lblRight).
+	'"Query(chParent)"<"AggrLabel(lblLeft,lblRight)">.
+	"Verify(chQuerier)"?(lblRoot).
+        "Offpath(chParent)"(lblOffpath).
+        '"Offpath(chLeft)"<lblOffpath>.
+        '"Offpath(chLeft)"<lblRight>.
+        '"Offpath(chRight)"<lblOffpath>.
+        '"Offpath(chRight)"<lblLeft>.
+        "Verify(chLeft)"(macLeft).
+	"Verify(chRight)"(macRight).
+	'"Verify(chParent)"<"XOR(macLeft, macRight)">;
+
+(* Two levels below base station *)
+InternalNode2(chQuerier,chParent, chLeft, chRight) <=
+	"Query(chQuerier)"?(nonceQ).
+	"Query(chLeft)"(lblLeft).
+	"Query(chRight)"(lblRight).
+	'"Query(chParent)"<"AggrLabel(lblLeft,lblRight)">.
+	"Verify(chQuerier)"?(lblRoot).
+        "Offpath(chParent)"(lblOffpath1).
+        "Offpath(chParent)"(lblOffpath2).
+        '"Offpath(chLeft)"<lblOffpath1>.
+        '"Offpath(chLeft)"<lblOffpath2>.
+        '"Offpath(chLeft)"<lblRight>.
+        '"Offpath(chRight)"<lblOffpath1>.
+        '"Offpath(chRight)"<lblOffpath2>.
+        '"Offpath(chRight)"<lblLeft>.
+        "Verify(chLeft)"(macLeft).
+	"Verify(chRight)"(macRight).
+	'"Verify(chParent)"<"XOR(macLeft, macRight)">;
+
+LeafNode(chQuerier, chParent, keyK, iSensedValue) <=
+	"Query(chQuerier)"?(nonceQ).
+	'"Query(chParent)"<"Label(iSensedValue)">.
+	"Verify(chQuerier)"?(lblRoot).
+	"Offpath(chParent)"(lblOffpath).
+	case "AggrLabel(Label(iSensedValue),lblOffpath) = lblRoot" : '"Verify(chParent)"<"MAC(nonceQ, keyK)">;
+
+(* was		- AggrLabel(Label(iSensedValue),AggrLabel(lblOffpath,lblOffpath2)) *)
+(* must be	- AggrLabel(AggrLabel(Label(iSensedValue),lblOffpath2),lblOffpath) *)
+
+LeafNode1(chQuerier, chParent, keyK, iSensedValue) <=
+	"Query(chQuerier)"?(nonceQ).
+	'"Query(chParent)"<"Label(iSensedValue)">.
+	"Verify(chQuerier)"?(lblRoot).
+	"Offpath(chParent)"(lblOffpath).
+	"Offpath(chParent)"(lblOffpath2).
+	case "AggrLabel(AggrLabel(Label(iSensedValue),lblOffpath2),lblOffpath) = lblRoot" : '"Verify(chParent)"<"MAC(nonceQ, keyK)">;
+
+LeafNode2(chQuerier, chParent, keyK, iSensedValue) <=
+	"Query(chQuerier)"?(nonceQ).
+	'"Query(chParent)"<"Label(iSensedValue)">.
+	"Verify(chQuerier)"?(lblRoot).
+	"Offpath(chParent)"(lblOffpath1).
+	"Offpath(chParent)"(lblOffpath2).
+	"Offpath(chParent)"(lblOffpath3).
+	case "AggrLabel(AggrLabel(AggrLabel(Label(iSensedValue),lblOffpath3),lblOffpath2),lblOffpath1) = lblRoot" : '"Verify(chParent)"<"MAC(nonceQ, keyK)">;
+
+System1(chQuerier) <=
+	(new chBS, chLeft, chRight, keyLeft, keyRight)	
+		(
+		(new nonceQ) (Querier<chQuerier, chBS, nonceQ, "XOR(MAC(nonceQ, keyLeft),MAC(nonceQ, keyRight))">) |
+  		InternalNode<chQuerier, chBS, chLeft, chRight> |
+  		LeafNode<chQuerier, chLeft, keyLeft, 20> |
+  		LeafNode<chQuerier, chRight, keyRight, 22>
+		);
+
+(* was		- XOR(MAC(nonceQ, keyLL),XOR(MAC(nonceQ, keyLR),XOR(MAC(nonceQ,keyRL),MAC(nonceQ,keyRR)))) *)
+(* must be	- XOR(XOR(MAC(nonceQ, keyLL),MAC(nonceQ, keyLR)),XOR(MAC(nonceQ,keyRL),MAC(nonceQ,keyRR))) *)
+
+System2(chQuerier) <=
+	(new chBS, chLeft, chRight, chLL, chLR, chRL, chRR, keyLL, keyLR, keyRL, keyRR)
+		(
+		(new nonceQ) (Querier<chQuerier, chBS, nonceQ, "XOR(XOR(MAC(nonceQ, keyLL),MAC(nonceQ, keyLR)),XOR(MAC(nonceQ,keyRL),MAC(nonceQ,keyRR)))">) |
+  		InternalNode<chQuerier, chBS, chLeft, chRight> |
+  		InternalNode1<chQuerier, chLeft, chLL, chLR> |
+  		InternalNode1<chQuerier, chRight, chRL, chRR> |
+  		LeafNode1<chQuerier, chLL, keyLL, 20> |
+  		LeafNode1<chQuerier, chLR, keyLR, 22> |
+  		LeafNode1<chQuerier, chRL, keyRL, 23> |
+  		LeafNode1<chQuerier, chRR, keyRR, 24>
+		);
+
+(* System 2 with a compromised (non-BS) internal node *)
+System2v2(chQuerier, chLeft, chLL, chLR) <=
+	(new chBS, chRight, chRL, chRR, keyLL, keyLR, keyRL, keyRR)
+		(
+		(new nonceQ) (Querier<chQuerier, chBS, nonceQ, "XOR(MAC(nonceQ, keyLL),XOR(MAC(nonceQ, keyLR),XOR(MAC(nonceQ,keyRL),MAC(nonceQ,keyLL))))">) |
+  		InternalNode<chQuerier, chBS, chLeft, chRight> |
+  		InternalNode1<chQuerier, chRight, chRL, chRR> |
+  		LeafNode1<chQuerier, chLL, keyLL, 20> |
+  		LeafNode1<chQuerier, chLR, keyLR, 22> |
+  		LeafNode1<chQuerier, chRL, keyRL, 23> |
+  		LeafNode1<chQuerier, chRR, keyRR, 24>
+		);
+
+
+(* System 1, with a hole instead of the internal node *)
+
+System3(chQuerier,chBS,chLeft,chRight) <=
+	(new keyLeft,keyRight)
+		(
+		(new nonceQ) (Querier<chQuerier, chBS, nonceQ, "XOR(MAC(nonceQ, keyLeft),MAC(nonceQ, keyRight))">) |
+  		LeafNode<chQuerier, chLeft, keyLeft, 20> |
+  		LeafNode<chQuerier, chRight, keyRight, 22>
+		);
+
+(* System 1, with a hole instead of a leaf node *)
+
+System4(chQuerier,chLeft) <=
+	(new chBS, chRight, keyRight)	
+		(
+		(new nonceQ) (Querier<chQuerier, chBS, nonceQ, "XOR(MAC(nonceQ, 1),MAC(nonceQ, 2))">) |
+  		InternalNode<chQuerier, chBS, chLeft, chRight> |
+  		LeafNode<chQuerier, chRight, keyRight, 22>
+		);
+
+System8(chQuerier) <=
+	(new chBS, chLeft, chRight, chLL, chLR, chRL, chRR, chLLL, chLLR, chLRL, chLRR, chRLL, chRLR, chRRL, chRRR, keyLLL, keyLLR, keyLRL, keyLRR, keyRLL, keyRLR, keyRRL, keyRRR)
+		(
+		(new nonceQ) (Querier<chQuerier, chBS, nonceQ, "XOR(XOR(XOR(MAC(nonceQ, keyLLL),MAC(nonceQ, keyLLR)),XOR(MAC(nonceQ,keyLRL),MAC(nonceQ,keyLRR))),XOR(XOR(MAC(nonceQ, keyRLL),MAC(nonceQ, keyRLR)),XOR(MAC(nonceQ,keyRRL),MAC(nonceQ,keyRRR))))">) |
+  		InternalNode<chQuerier, chBS, chLeft, chRight> |
+  		InternalNode1<chQuerier, chLeft, chLL, chLR> |
+  		InternalNode1<chQuerier, chRight, chRL, chRR> |
+  		InternalNode2<chQuerier, chLL, chLLL, chLLR> |
+  		InternalNode2<chQuerier, chLR, chLRL, chLRR> |
+  		InternalNode2<chQuerier, chRL, chRLL, chRLR> |
+  		InternalNode2<chQuerier, chRR, chRRL, chRRR> |
+  		LeafNode2<chQuerier, chLLL, keyLLL, 20> |
+  		LeafNode2<chQuerier, chLLR, keyLLR, 22> |
+  		LeafNode2<chQuerier, chLRL, keyLRL, 23> |
+  		LeafNode2<chQuerier, chLRR, keyLRR, 24> |
+  		LeafNode2<chQuerier, chRLL, keyRLL, 30> |
+  		LeafNode2<chQuerier, chRLR, keyRLR, 32> |
+  		LeafNode2<chQuerier, chRRL, keyRRL, 33> |
+  		LeafNode2<chQuerier, chRRR, keyRRR, 34>
+		);
+
+(*
+vim:ft=pwb:
+*)
