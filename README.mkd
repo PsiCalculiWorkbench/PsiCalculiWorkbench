@@ -35,21 +35,6 @@ export PATH="$PATH:`pwd`/tools"
 ```
 
 
-Windows
-=======
-
-On windows, you need Cygwin (http://cygwin.com/). Install Cygwin together
-with gcc packages. Compile and install Poly/ML from www.polyml.org.
-
-In cygwin shell, execute:
-
-```
-cd PsiWorkBench-yyyy.dd
-export PSI_WORKBENCH_HOME=`pwd`
-export PATH="$PATH:`pwd`/tools"
-```
-
-
 Running
 =======
 
